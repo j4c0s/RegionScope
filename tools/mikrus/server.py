@@ -5,7 +5,8 @@
 MeshCore Ultra-Lightweight HTTP Server for Mikr.us
 -------------------------------------------------
 Serves the HTML visualizer and processes fast in-memory topology queries directly
-from the SQLite database. Takes <15MB RAM and has minimal CPU footprint.
+from the SQLite database. Configured with CORS headers to support GitHub Pages.
+Takes <15MB RAM and has minimal CPU footprint.
 """
 
 import os
@@ -21,8 +22,21 @@ logger = logging.getLogger("WebServer")
 
 PORT = int(os.environ.get("PORT", "8080"))
 DB_PATH = os.environ.get("DB_PATH", "mesh.db")
+CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "*") # Change to your github.io URL for extra security if wanted
 
 class MeshGridHTTPHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # Inject CORS headers before ending headers so cross-domain (github.io) requests succeed
+        self.send_header('Access-Control-Allow-Origin', CORS_ORIGIN)
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type')
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        # Handle CORS preflight requests securely
+        self.send_response(200)
+        self.end_headers()
+
     def do_GET(self):
         # Serve the API data dynamically from SQLite
         if self.path == '/data.json':
@@ -35,7 +49,7 @@ class MeshGridHTTPHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode('utf-8'))
             return
 
-        # Serve our main index.html
+        # Serve our main index.html locally if visited directly on Mikr.us
         if self.path == '/' or self.path == '/index.html':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -60,7 +74,7 @@ class MeshGridHTTPHandler(http.server.SimpleHTTPRequestHandler):
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # 1. Fetch unique nodes from last 7 days of activity
+            # Fetch unique nodes from last 7 days of activity
             cursor.execute("""
                 SELECT
                     topic,
@@ -94,7 +108,6 @@ class MeshGridHTTPHandler(http.server.SimpleHTTPRequestHandler):
                         pass
 
                 # Deduplicate nodes and assign roles
-                # We identify unique hops
                 for idx, hop in enumerate(hops):
                     hop_clean = clean_prefix(hop)
                     if hop_clean not in nodes_map:
@@ -155,7 +168,7 @@ class MeshGridHTTPHandler(http.server.SimpleHTTPRequestHandler):
             return {"nodes": [], "edges": [], "scopes": {}}
 
 def main():
-    logger.info(f"Starting server on port {PORT}...")
+    logger.info(f"Starting server on port {PORT} with CORS enabled (Origin: {CORS_ORIGIN})...")
     handler = MeshGridHTTPHandler
     # Disable logging per request to keep console neat
     handler.log_message = lambda self, format, *args: None
