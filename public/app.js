@@ -1079,6 +1079,11 @@ function navigate() {
     basePage = 'packet-detail';
   }
 
+  // Special route: mesh-grid/PUBKEY → mesh-grid with node selection
+  if (basePage === 'mesh-grid' && routeParam) {
+    basePage = 'mesh-grid';
+  }
+
   // Special route: observers/ID → observer detail page
   if (basePage === 'observers' && routeParam) {
     basePage = 'observer-detail';
@@ -1129,7 +1134,7 @@ function navigate() {
 
   const app = document.getElementById('app');
   // Pages with fixed-height containers (maps, virtual-scroll, split-panels)
-  const fixedPages = { packets: 1, nodes: 1, map: 1, live: 1, channels: 1, 'audio-lab': 1 };
+  const fixedPages = { packets: 1, nodes: 1, map: 1, live: 1, channels: 1, 'audio-lab': 1, 'mesh-grid': 1 };
   app.classList.toggle('app-fixed', basePage in fixedPages);
 
   // Issue #1369: ?embed=1 chrome suppression for cross-domain iframe embeds.

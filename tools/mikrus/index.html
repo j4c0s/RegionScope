@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Siatka Mesh (Mikr.us)</title>
+  <style>
+    :root {
+      --bg: #0f0f23;
+      --bg-card: #1a1a2e;
+      --text: #e2e8f0;
+      --text-muted: #a8b8cc;
+      --accent: #4a9eff;
+      --border: #334155;
+      --repeater: #D55E00;
+      --companion: #56B4E9;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 320px;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+
+    h2 {
+      margin: 0 0 4px 0;
+      font-size: 20px;
+      color: var(--accent);
+    }
+
+    p.subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 0 0 16px 0;
+    }
+
+    .lang-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: bold;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    select, input {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 12px;
+    }
+
+    /* Main view */
+    .view-container {
+      flex: 1;
+      position: relative;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    /* Badge & Info styles */
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: bold;
+      border-radius: 4px;
+      text-transform: uppercase;
+      background: var(--border);
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .stat-row span {
+      color: var(--text-muted);
+    }
+
+    .stat-row strong {
+      color: var(--text);
+    }
+
+    .close-btn {
+      float: right;
+      cursor: pointer;
+      font-weight: bold;
+      color: var(--text-muted);
+      border: none;
+      background: none;
+      font-size: 16px;
+    }
+
+    .close-btn:hover {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sidebar">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <h2 id="title">Siatka Mesh</h2>
+      <button class="lang-btn" id="langToggle">PL / EN</button>
+    </div>
+    <p class="subtitle" id="subtitle">Topologia sieci oraz regiony (bańki) na Mikrusie</p>
+
+    <div class="card">
+      <label id="lblMode">Tryb wizualizacji</label>
+      <select id="modeSelect">
+        <option value="region">Oparty o regiony (bańki)</option>
+        <option value="neighbor">Czysto sąsiedzki</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <label id="lblSearch">Wyszukaj węzeł</label>
+      <input type="text" id="searchInput" placeholder="Szukaj po nazwie lub kluczu...">
+    </div>
+
+    <div id="detailPanel" class="card" style="display:none;">
+      <!-- Dynamic details go here -->
+    </div>
+  </div>
+
+  <div class="view-container">
+    <canvas id="meshCanvas"></canvas>
+    <div id="tooltip" class="tooltip"></div>
+  </div>
+
+  <script>
+    // Localisation Dictionary
+    const L10N = {
+      pl: {
+        title: "Siatka Mesh",
+        subtitle: "Topologia sieci oraz regiony (bańki) na Mikrusie",
+        lblMode: "Tryb wizualizacji",
+        lblSearch: "Wyszukaj węzeł",
+        searchPlaceholder: "Szukaj po nazwie lub kluczu...",
+        modeRegion: "Oparty o regiony (bańki)",
+        modeNeighbor: "Czysto sąsiedzki",
+        noNodeSelected: "Wybierz węzeł, aby zobaczyć szczegóły",
+        lastSeen: "Ostatnio widziany",
+        hops: "skoków",
+        scopes: "Wiadomości ze scope",
+        hopBreakdown: "Rozkład liczby skoków",
+        loading: "Ładowanie danych...",
+        packets: "pakietów",
+        noHopsBreakdown: "Brak danych o rozkładzie skoków"
+      },
+      en: {
+        title: "Mesh Grid",
+        subtitle: "Network topology and scope bubbles on Mikr.us",
+        lblMode: "Visualization Mode",
+        lblSearch: "Search node",
+        searchPlaceholder: "Search by name or key...",
+        modeRegion: "Region-based (Scope Bubbles)",
+        modeNeighbor: "Pure Neighbors",
+        noNodeSelected: "Select a node to view details",
+        lastSeen: "Last Seen",
+        hops: "hops",
+        scopes: "Transported Scopes",
+        hopBreakdown: "Relay Hop Breakdown",
+        loading: "Loading data...",
+        packets: "packets",
+        noHopsBreakdown: "No hop breakdown data available"
+      }
+    };
+
+    let lang = 'pl';
+
+    function t(key) {
+      return L10N[lang][key] || key;
+    }
+
+    function updateLabels() {
+      document.getElementById('title').textContent = t('title');
+      document.getElementById('subtitle').textContent = t('subtitle');
+      document.getElementById('lblMode').textContent = t('lblMode');
+      document.getElementById('lblSearch').textContent = t('lblSearch');
+      document.getElementById('searchInput').placeholder = t('searchPlaceholder');
+
+      const select = document.getElementById('modeSelect');
+      select.options[0].textContent = t('modeRegion');
+      select.options[1].textContent = t('modeNeighbor');
+    }
+
+    document.getElementById('langToggle').addEventListener('click', () => {
+      lang = lang === 'pl' ? 'en' : 'pl';
+      updateLabels();
+      if (selectedNode) showNodeDetails(selectedNode);
+    });
+
+    let nodes = [];
+    let edges = [];
+    let scopes = {};
+    let selectedNode = null;
+    let hoverNode = null;
+    let panX = 0, panY = 0, zoom = 1;
+    let dragging = null, panning = false;
+    let lastMouseX = 0, lastMouseY = 0;
+    let cooling = 1.0;
+
+    const canvas = document.getElementById('meshCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = canvas.clientWidth * window.devicePixelRatio;
+      canvas.height = canvas.clientHeight * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      cooling = 1.0;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Fetch analytical data from python server
+    async function loadData() {
+      try {
+        const response = await fetch('/data.json');
+        const data = await response.json();
+
+        nodes = data.nodes.map(n => ({
+          ...n,
+          x: canvas.clientWidth / 2 + (Math.random() - 0.5) * 400,
+          y: canvas.clientHeight / 2 + (Math.random() - 0.5) * 400,
+          vx: 0, vy: 0,
+          radius: n.role === 'repeater' ? 10 : 6
+        }));
+
+        edges = data.edges;
+        scopes = data.scopes;
+
+        updateLabels();
+        startSimulation();
+      } catch (err) {
+        console.error("Failed to load mesh data: ", err);
+      }
+    }
+
+    function startSimulation() {
+      function tick() {
+        const W = canvas.clientWidth;
+        const H = canvas.clientHeight;
+        const mode = document.getElementById('modeSelect').value;
+
+        if (cooling > 0.01) {
+          // Repulsion
+          const k = 80;
+          for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+              let dx = nodes[j].x - nodes[i].x;
+              let dy = nodes[j].y - nodes[i].y;
+              let d2 = dx*dx + dy*dy;
+              if (d2 < 4) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 4; }
+              const f = (k*k) / d2;
+              const fx = (dx / Math.sqrt(d2)) * f;
+              const fy = (dy / Math.sqrt(d2)) * f;
+              nodes[i].vx -= fx;
+              nodes[i].vy -= fy;
+              nodes[j].vx += fx;
+              nodes[j].vy += fy;
+            }
+          }
+
+          // Attraction along Edges
+          const nodeMap = {};
+          nodes.forEach(n => { nodeMap[n.pubkey] = n; });
+
+          edges.forEach(e => {
+            const a = nodeMap[e.source];
+            const b = nodeMap[e.target];
+            if (!a || !b) return;
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const d = Math.sqrt(dx*dx + dy*dy) || 1;
+            const f = (d - 120) * 0.05 * (0.5 + e.score * 0.5);
+            const fx = (dx / d) * f;
+            const fy = (dy / d) * f;
+            a.vx += fx;
+            a.vy += fy;
+            b.vx -= fx;
+            b.vy -= fy;
+          });
+
+          // Region / Scope bubbles forces
+          if (mode === 'region') {
+            Object.values(scopes).forEach(sc => {
+              let sumX = 0, sumY = 0, count = 0;
+              sc.nodes.forEach(pk => {
+                const n = nodeMap[pk];
+                if (n) { sumX += n.x; sumY += n.y; count++; }
+              });
+              if (count > 0) {
+                sc.x = sumX / count;
+                sc.y = sumY / count;
+              }
+              sc.nodes.forEach(pk => {
+                const n = nodeMap[pk];
+                if (n) {
+                  n.vx += (sc.x - n.x) * 0.05;
+                  n.vy += (sc.y - n.y) * 0.05;
+                }
+              });
+            });
+          }
+
+          // Apply forces
+          const damping = 0.85;
+          nodes.forEach(n => {
+            if (n._pinned) return;
+            n.vx *= damping * cooling;
+            n.vy *= damping * cooling;
+            n.x += n.vx;
+            n.y += n.vy;
+          });
+
+          cooling *= 0.995;
+        }
+
+        // Draw Canvas
+        ctx.save();
+        ctx.clearRect(0, 0, W, H);
+        ctx.translate(panX, panY);
+        ctx.scale(zoom, zoom);
+
+        // Render Scope Regions ("bańki")
+        if (mode === 'region') {
+          Object.values(scopes).forEach(sc => {
+            let maxR = 40;
+            sc.nodes.forEach(pk => {
+              const n = nodeMap[pk];
+              if (n) {
+                const dx = n.x - sc.x;
+                const dy = n.y - sc.y;
+                maxR = Math.max(maxR, Math.sqrt(dx*dx + dy*dy) + 20);
+              }
+            });
+
+            ctx.beginPath();
+            ctx.arc(sc.x, sc.y, maxR, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(74, 158, 255, 0.03)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(74, 158, 255, 0.15)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.font = '10px monospace';
+            ctx.fillText(sc.name, sc.x - 20, sc.y - maxR + 12);
+          });
+        }
+
+        // Draw Edges
+        edges.forEach(e => {
+          const a = nodeMap[e.source];
+          const b = nodeMap[e.target];
+          if (!a || !b) return;
+
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.lineWidth = Math.max(1, Math.min(6, e.weight / 4));
+          ctx.strokeStyle = 'rgba(213, 94, 0, 0.4)';
+          ctx.stroke();
+        });
+
+        // Draw Nodes
+        const search = document.getElementById('searchInput').value.trim().toLowerCase();
+        nodes.forEach(n => {
+          const matched = !search || n.name.toLowerCase().includes(search) || n.pubkey.toLowerCase().startsWith(search);
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius, 0, Math.PI*2);
+          ctx.fillStyle = n.role === 'repeater' ? 'var(--repeater)' : 'var(--companion)';
+          ctx.fill();
+
+          ctx.strokeStyle = selectedNode && selectedNode.pubkey === n.pubkey ? '#fff' : 'rgba(255,255,255,0.4)';
+          ctx.lineWidth = selectedNode && selectedNode.pubkey === n.pubkey ? 3 : 1;
+          ctx.stroke();
+
+          if (matched && zoom > 0.4) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(n.name, n.x, n.y + n.radius + 10);
+          }
+        });
+
+        ctx.restore();
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // Interactivity
+    function getMousePos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left - panX) / zoom,
+        y: (e.clientY - rect.top - panY) / zoom
+      };
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      const pos = getMousePos(e);
+      let found = null;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        const dx = pos.x - n.x;
+        const dy = pos.y - n.y;
+        if (dx*dx + dy*dy <= n.radius*n.radius) { found = n; break; }
+      }
+
+      if (found) {
+        dragging = found;
+        found._pinned = true;
+      } else {
+        panning = true;
+      }
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+
+      if (dragging) {
+        const dx = (e.clientX - lastMouseX) / zoom;
+        const dy = (e.clientY - lastMouseY) / zoom;
+        dragging.x += dx;
+        dragging.y += dy;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        cooling = Math.max(cooling, 0.3);
+      } else if (panning) {
+        panX += e.clientX - lastMouseX;
+        panY += e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+      } else {
+        const pos = getMousePos(e);
+        let found = null;
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          const n = nodes[i];
+          const dx = pos.x - n.x;
+          const dy = pos.y - n.y;
+          if (dx*dx + dy*dy <= n.radius*n.radius) { found = n; break; }
+        }
+
+        if (found !== hoverNode) {
+          hoverNode = found;
+          const tip = document.getElementById('tooltip');
+          if (found) {
+            tip.style.display = 'block';
+            tip.style.left = (cx + 12) + 'px';
+            tip.style.top = (cy - 8) + 'px';
+            tip.innerHTML = `<strong>${found.name}</strong><br><small>${found.pubkey.slice(0, 16)}...</small>`;
+          } else {
+            tip.style.display = 'none';
+          }
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      if (dragging) dragging._pinned = false;
+      dragging = null;
+      panning = false;
+    });
+
+    canvas.addEventListener('click', e => {
+      const pos = getMousePos(e);
+      let found = null;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        const dx = pos.x - n.x;
+        const dy = pos.y - n.y;
+        if (dx*dx + dy*dy <= n.radius*n.radius) { found = n; break; }
+      }
+      if (found) {
+        selectedNode = found;
+        showNodeDetails(found);
+      }
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.15 : 0.85;
+      const newZoom = Math.max(0.1, Math.min(10, zoom * factor));
+      panX = cx - (cx - panX) * (newZoom / zoom);
+      panY = cy - (cy - panY) * (newZoom / zoom);
+      zoom = newZoom;
+    }, { passive: false });
+
+    function showNodeDetails(n) {
+      const panel = document.getElementById('detailPanel');
+      panel.style.display = 'block';
+
+      const scopesHtml = n.scopes && n.scopes.length
+        ? n.scopes.map(s => `<span class="badge" style="background:var(--accent); margin:2px;">${s}</span>`).join(' ')
+        : `<span class="text-muted">brak</span>`;
+
+      const breakdownHtml = n.hops_breakdown
+        ? Object.entries(n.hops_breakdown).map(([hops, count]) => `
+            <div class="stat-row">
+              <span>${hops} hop${hops === '1' ? '' : 's'}:</span>
+              <strong>${count} ${t('packets')}</strong>
+            </div>
+          `).join('')
+        : `<span class="text-muted">${t('noHopsBreakdown')}</span>`;
+
+      panel.innerHTML = `
+        <button class="close-btn" onclick="document.getElementById('detailPanel').style.display='none'; selectedNode=null;">×</button>
+        <h4 style="margin:0 0 6px 0; color:var(--accent);">${n.name}</h4>
+        <span class="badge" style="background: ${n.role === 'repeater' ? 'var(--repeater)' : 'var(--companion)'}; color:white;">${n.role}</span>
+
+        <div style="margin-top:12px;">
+          <div class="stat-row">
+            <span>Klucz:</span>
+            <strong class="mono" style="font-size:10px; word-break:break-all;">${n.pubkey}</strong>
+          </div>
+          <div class="stat-row">
+            <span>${t('lastSeen')}:</span>
+            <strong>${n.last_seen ? n.last_seen.substring(0, 19).replace('T', ' ') : '—'}</strong>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <label>${t('scopes')}</label>
+          <div>${scopesHtml}</div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <label>${t('hopBreakdown')}</label>
+          <div>${breakdownHtml}</div>
+        </div>
+      `;
+    }
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+      cooling = 1.0;
+    });
+
+    loadData();
+  </script>
+</body>
+</html>

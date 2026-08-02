@@ -5555,3 +5555,129 @@ body.embed #app.app-fixed {
 .role-swatch--room      { color: var(--role-room); }
 .role-swatch--sensor    { color: var(--role-sensor); }
 .role-swatch--observer  { color: var(--role-observer); }
+
+/* ============================================================
+ * Mesh Grid Analyzer Styles
+ * ============================================================ */
+.mesh-grid-page {
+  display: flex;
+  height: calc(100vh - var(--nav-height, 56px));
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface-0);
+  color: var(--text);
+}
+
+.mesh-grid-sidebar {
+  width: 320px;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.mesh-grid-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.mesh-grid-header-actions h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-family: Aldrich, monospace;
+}
+
+.mesh-grid-view {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+}
+
+.grid-controls-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.grid-mode-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--input-bg, var(--surface-0));
+  color: var(--text);
+  margin-top: 4px;
+  font-family: inherit;
+}
+
+.grid-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--input-bg, var(--surface-0));
+  color: var(--text);
+  font-family: inherit;
+}
+
+.grid-detail-panel {
+  flex: 1;
+}
+
+.grid-details-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  position: relative;
+}
+
+.detail-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.detail-close-btn:hover {
+  color: var(--text);
+}
+
+.grid-canvas-tooltip {
+  pointer-events: none;
+  background: var(--surface-1, #1a1a2e);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+@media (max-width: 768px) {
+  .mesh-grid-page {
+    flex-direction: column-reverse;
+  }
+  .mesh-grid-sidebar {
+    width: 100%;
+    height: 350px;
+    border-right: none;
+    border-top: 1px solid var(--border);
+  }
+  .mesh-grid-view {
+    height: calc(100% - 350px);
+  }
+}
