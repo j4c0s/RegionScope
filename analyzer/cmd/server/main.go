@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -52,22 +54,29 @@ type BrokerConfig struct {
 }
 
 type WsMessage struct {
-	Type    string               `json:"type"` // "packet", "status", "brokers", "init"
-	Status  string               `json:"status,omitempty"`
-	Brokers []*BrokerConfig      `json:"brokers,omitempty"`
+	Type    string                 `json:"type"` // "packet", "status", "brokers", "init"
+	Status  string                 `json:"status,omitempty"`
+	Brokers []*BrokerConfig        `json:"brokers,omitempty"`
 	Packets []*packet.ParsedPacket `json:"packets,omitempty"`
-	Packet  *packet.ParsedPacket `json:"packet,omitempty"`
+	Packet  *packet.ParsedPacket   `json:"packet,omitempty"`
 }
 
 func main() {
-	port := getEnv("HTTP_PORT", "8080")
+	portFlag := flag.String("port", "", "HTTP port to listen on (e.g. 8085)")
+	flag.Parse()
+
+	requestedPort := *portFlag
+	if requestedPort == "" {
+		requestedPort = getEnv("HTTP_PORT", "8085")
+	}
+
 	defaultBrokers := getEnv("MQTT_BROKERS", getEnv("MQTT_BROKER", ""))
 	defaultTopic := getEnv("MQTT_TOPIC", "meshcore/#")
 	defaultUser := getEnv("MQTT_USERNAME", "")
 	defaultPass := getEnv("MQTT_PASSWORD", "")
 	simulate := getEnv("SIMULATE", "false")
 
-	log.Printf("[Analyzer] Starting MeshCore Packet Analyzer on port %s...", port)
+	log.Printf("[Analyzer] Starting MeshCore Packet Analyzer...")
 
 	if defaultBrokers != "" {
 		brokers := strings.Split(defaultBrokers, ",")
@@ -108,11 +117,38 @@ func main() {
 		}
 	})
 
-	serverAddr := ":" + port
-	log.Printf("[Analyzer] Server listening on http://localhost:%s/", port)
-	if err := http.ListenAndServe(serverAddr, handler); err != nil {
-		log.Fatalf("Server ListenAndServe error: %v", err)
+	listener, portStr, err := bindAvailablePort(requestedPort)
+	if err != nil {
+		log.Fatalf("[Analyzer] Failed to bind any HTTP port: %v", err)
 	}
+
+	log.Printf("==========================================================")
+	log.Printf("[Analyzer] SUCCESS! Server running on PC.")
+	log.Printf("[Analyzer] Open browser at: http://localhost:%s/", portStr)
+	log.Printf("==========================================================")
+
+	if err := http.Serve(listener, handler); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}
+
+func bindAvailablePort(startPort string) (net.Listener, string, error) {
+	portNum, err := strconv.Atoi(startPort)
+	if err != nil || portNum <= 0 {
+		portNum = 8085
+	}
+
+	// Try requested port first, then fallback to next 20 ports if busy
+	for p := portNum; p < portNum+20; p++ {
+		addr := fmt.Sprintf(":%d", p)
+		l, err := net.Listen("tcp", addr)
+		if err == nil {
+			return l, strconv.Itoa(p), nil
+		}
+		log.Printf("[Analyzer] Port %d busy, trying next...", p)
+	}
+
+	return nil, "", fmt.Errorf("all ports in range %d-%d are busy", portNum, portNum+20)
 }
 
 func getEnv(key, defaultVal string) string {
@@ -288,7 +324,6 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	clients[clientConn] = true
 	mu.Unlock()
 
-	// Send initial state (brokers list + recent 20 packets)
 	initMsg := WsMessage{
 		Type:    "init",
 		Brokers: getBrokersList(),
