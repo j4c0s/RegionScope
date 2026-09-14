@@ -8,154 +8,188 @@ import (
 	"time"
 )
 
+// Payload type constants matching MeshCore standard
+const (
+	PayloadTypeReq      = 0x00
+	PayloadTypeResp     = 0x01
+	PayloadTypeTxtMsg   = 0x02
+	PayloadTypeAck      = 0x03
+	PayloadTypeAdvert   = 0x04
+	PayloadTypeGrpTxt   = 0x05
+	PayloadTypeLocation = 0x07
+	PayloadTypePath     = 0x08
+	PayloadTypeTrace    = 0x09
+)
+
+func GetPayloadTypeName(pType byte) string {
+	switch pType {
+	case PayloadTypeReq:
+		return "REQ"
+	case PayloadTypeResp:
+		return "RESP"
+	case PayloadTypeTxtMsg:
+		return "TXT_MSG"
+	case PayloadTypeAck:
+		return "ACK"
+	case PayloadTypeAdvert:
+		return "ADVERT"
+	case PayloadTypeGrpTxt:
+		return "GRP_TXT"
+	case PayloadTypeLocation:
+		return "LOCATION"
+	case PayloadTypePath:
+		return "PATH"
+	case PayloadTypeTrace:
+		return "TRACE"
+	default:
+		return fmt.Sprintf("UNKNOWN(0x%02X)", pType)
+	}
+}
+
 // ParsedPacket represents a processed MeshCore packet.
 type ParsedPacket struct {
 	Timestamp    string   `json:"timestamp"`
-	Topic        string   `json:"topic"`
-	Observer     string   `json:"observer,omitempty"`
-	Region       string   `json:"region,omitempty"` // Region / Scope (e.g. KRK, WAW, RZE)
-	Origin       string   `json:"origin,omitempty"`
-	Hash         string   `json:"hash,omitempty"`
-	RawHex       string   `json:"raw_hex"`
-	PayloadType  int      `json:"payload_type"`
-	RouteType    int      `json:"route_type"`
-	PathByteSize int      `json:"path_byte_size"` // 1, 2, 3, or 4 bytes per hop
-	PathCount    int      `json:"path_count"`     // number of hops
+	Region       string   `json:"region"`
+	Observer     string   `json:"observer"`
+	Origin       string   `json:"origin"`
+	PathByteSize int      `json:"path_byte_size"`
+	PathCount    int      `json:"path_count"`
+	HopCount     int      `json:"hop_count"`
 	Hops         []string `json:"hops"`
-	Len          int      `json:"len"`
-	Direction    string   `json:"direction,omitempty"`
-	Count        int      `json:"count,omitempty"` // Used when grouped by hash
+	ResolvedHops []string `json:"resolved_hops"`
+	PayloadType  byte     `json:"payload_type"`
+	TypeName     string   `json:"type_name"`
+	Hash         string   `json:"hash"`
+	RawHex       string   `json:"raw_hex"`
+	AdvertName   string   `json:"advert_name,omitempty"`
+	AdvertKey    string   `json:"advert_key,omitempty"`
+	Lat          float64  `json:"lat,omitempty"`
+	Lon          float64  `json:"lon,omitempty"`
 }
 
-// MqttPayloadStruct helps parse JSON payloads from MeshCore MQTT messages.
-type MqttPayloadStruct struct {
-	Timestamp  string          `json:"timestamp"`
-	Hash       string          `json:"hash"`
-	Origin     string          `json:"origin"`
-	Region     string          `json:"region"`
-	Scope      string          `json:"scope"`
-	Type       string          `json:"type"`
-	Direction  string          `json:"direction"`
-	Time       string          `json:"time"`
-	Date       string          `json:"date"`
-	Len        json.RawMessage `json:"len"`
-	PacketType json.RawMessage `json:"packet_type"`
-	Payload    string          `json:"payload"`
-	Hex        string          `json:"hex"`
-	RawHex     string          `json:"raw_hex"`
-	Raw        string          `json:"raw"`
-	Data       string          `json:"data"`
-}
-
-// ParseMeshCorePacket extracts packet path byte size, repeater hops, and details from an MQTT message.
+// ParseMeshCorePacket extracts packet path byte size, payload type, repeater hops, and details from an MQTT message.
 func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error) {
 	parsed := &ParsedPacket{
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		Topic:     topic,
-		Hops:      []string{},
-		Count:     1,
+		Region:    "MESH",
+		Observer:  "Observer",
+		TypeName:  "DATA",
 	}
 
-	// Parse topic structure: meshcore/<REGION>/<OBSERVER>/...
-	parts := strings.Split(topic, "/")
-	if len(parts) >= 2 && parts[1] != "" {
-		parsed.Region = strings.ToUpper(parts[1])
+	// 1. Extract Region / Scope and Observer ID from MQTT topic if formatted like meshcore/<REGION>/<OBSERVER>/packets
+	topicParts := strings.Split(topic, "/")
+	if len(topicParts) >= 3 {
+		parsed.Region = topicParts[1]
+		parsed.Observer = topicParts[2]
+		parsed.Origin = topicParts[2]
 	}
-	if len(parts) >= 3 {
-		parsed.Observer = parts[2]
-	}
 
-	var hexData string
-
-	// Try parsing JSON payload
-	var mqttMsg MqttPayloadStruct
-	if err := json.Unmarshal(rawPayload, &mqttMsg); err == nil {
-		if mqttMsg.Timestamp != "" {
-			parsed.Timestamp = mqttMsg.Timestamp
+	// 2. Extract Raw Hex String
+	var rawHex string
+	var jsonHash string
+	if len(rawPayload) > 0 && rawPayload[0] == '{' {
+		var jsonMsg struct {
+			Raw      string `json:"raw"`
+			Hex      string `json:"hex"`
+			Payload  string `json:"payload"`
+			Origin   string `json:"origin"`
+			Observer string `json:"observer"`
+			Hash     string `json:"hash"`
 		}
-		if mqttMsg.Hash != "" {
-			parsed.Hash = strings.ToUpper(mqttMsg.Hash)
-		}
-		if mqttMsg.Origin != "" {
-			parsed.Origin = mqttMsg.Origin
-		}
-		if mqttMsg.Region != "" {
-			parsed.Region = strings.ToUpper(mqttMsg.Region)
-		} else if mqttMsg.Scope != "" {
-			parsed.Region = strings.ToUpper(mqttMsg.Scope)
-		}
-		if mqttMsg.Direction != "" {
-			parsed.Direction = mqttMsg.Direction
-		}
-
-		// Pick the raw packet hex string
-		if mqttMsg.Hex != "" {
-			hexData = mqttMsg.Hex
-		} else if mqttMsg.Payload != "" {
-			hexData = mqttMsg.Payload
-		} else if mqttMsg.RawHex != "" {
-			hexData = mqttMsg.RawHex
-		} else if mqttMsg.Raw != "" {
-			hexData = mqttMsg.Raw
-		} else if mqttMsg.Data != "" {
-			hexData = mqttMsg.Data
+		if err := json.Unmarshal(rawPayload, &jsonMsg); err == nil {
+			if jsonMsg.Raw != "" {
+				rawHex = jsonMsg.Raw
+			} else if jsonMsg.Hex != "" {
+				rawHex = jsonMsg.Hex
+			} else if jsonMsg.Payload != "" {
+				rawHex = jsonMsg.Payload
+			}
+			if jsonMsg.Origin != "" {
+				parsed.Origin = jsonMsg.Origin
+			} else if jsonMsg.Observer != "" {
+				parsed.Observer = jsonMsg.Observer
+			}
+			if jsonMsg.Hash != "" {
+				jsonHash = jsonMsg.Hash
+			}
 		}
 	} else {
-		// Fallback: entire MQTT payload might be a raw hex string
-		hexData = strings.TrimSpace(string(rawPayload))
+		rawHex = strings.TrimSpace(string(rawPayload))
 	}
 
-	hexData = strings.TrimSpace(hexData)
-	if hexData == "" {
+	if rawHex == "" {
 		return nil, fmt.Errorf("no packet hex found in payload")
 	}
 
-	parsed.RawHex = strings.ToUpper(hexData)
-	buf, err := hex.DecodeString(hexData)
+	buf, err := hex.DecodeString(rawHex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode hex: %w", err)
+		return nil, fmt.Errorf("invalid hex string: %v", err)
 	}
 
-	parsed.Len = len(buf)
-	if len(buf) < 1 {
-		return nil, fmt.Errorf("packet buffer empty")
+	if len(buf) < 2 {
+		return nil, fmt.Errorf("packet buffer empty or too short")
 	}
 
-	// MeshCore Header
+	parsed.RawHex = strings.ToUpper(rawHex)
+
+	// Header Byte 0: payloadType = (header >> 2) & 0x0F
 	headerByte := buf[0]
-	parsed.RouteType = int(headerByte & 0x03)
-	parsed.PayloadType = int((headerByte >> 2) & 0x0F)
+	payloadType := (headerByte >> 2) & 0x0F
+	parsed.PayloadType = payloadType
+	parsed.TypeName = GetPayloadTypeName(payloadType)
 
-	offset := 1
-	// RouteType 3 = TRANSPORT (4 transport code bytes)
-	if parsed.RouteType == 3 {
-		if len(buf) < offset+4 {
-			return parsed, nil
-		}
-		offset += 4
-	}
+	// Header Byte 1: Path Specifier
+	pathSpec := buf[1]
+	pathByteSize := int((pathSpec>>6)&0x03) + 1
+	hopCount := int(pathSpec & 0x3F)
 
-	if offset >= len(buf) {
-		return parsed, nil
-	}
+	parsed.PathByteSize = pathByteSize
+	parsed.HopCount = hopCount
+	parsed.PathCount = hopCount
 
-	// Path Byte
-	pathByte := buf[offset]
-	offset++
+	hops := make([]string, 0, hopCount)
+	idx := 2
 
-	parsed.PathByteSize = int(pathByte>>6) + 1
-	parsed.PathCount = int(pathByte & 0x3F)
-
-	hops := make([]string, 0, parsed.PathCount)
-	for i := 0; i < parsed.PathCount; i++ {
-		start := offset + i*parsed.PathByteSize
-		end := start + parsed.PathByteSize
-		if end > len(buf) {
+	for i := 0; i < hopCount; i++ {
+		if idx+pathByteSize > len(buf) {
 			break
 		}
-		hops = append(hops, strings.ToUpper(hex.EncodeToString(buf[start:end])))
+		hopBytes := buf[idx : idx+pathByteSize]
+		hops = append(hops, strings.ToUpper(hex.EncodeToString(hopBytes)))
+		idx += pathByteSize
 	}
 
 	parsed.Hops = hops
+	parsed.ResolvedHops = hops
+
+	if jsonHash != "" {
+		parsed.Hash = strings.ToUpper(jsonHash)
+	} else {
+		hashLen := 4
+		if len(buf) < hashLen {
+			hashLen = len(buf)
+		}
+		parsed.Hash = strings.ToUpper(hex.EncodeToString(buf[len(buf)-hashLen:]))
+	}
+
+	// Parse Advert payload if PayloadType == 0x04 (ADVERT)
+	if payloadType == PayloadTypeAdvert && len(buf) > idx {
+		parseAdvertPayload(buf[idx:], parsed)
+	}
+
 	return parsed, nil
+}
+
+func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
+	if len(payload) >= 4 {
+		keyBytes := payload[:4]
+		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(keyBytes))
+	}
+	if len(payload) > 4 {
+		nameBytes := payload[4:]
+		name := strings.Trim(string(nameBytes), "\x00\r\n ")
+		if name != "" {
+			pkt.AdvertName = name
+		}
+	}
 }

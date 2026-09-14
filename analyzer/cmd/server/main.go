@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/corescope/analyzer/pkg/packet"
+	"github.com/corescope/analyzer/pkg/storage"
 )
 
 var (
@@ -32,6 +33,7 @@ var (
 	recentPkts  = make([]*packet.ParsedPacket, 0, 20)
 	brokerConns = make(map[string]*BrokerConfig)
 	configFile  = "brokers.json"
+	dbStorage   *storage.Storage
 )
 
 type ClientConn struct {
@@ -57,16 +59,18 @@ type BrokerConfig struct {
 }
 
 type WsMessage struct {
-	Type    string                 `json:"type"` // "packet", "status", "brokers", "init"
-	Status  string                 `json:"status,omitempty"`
-	Brokers []*BrokerConfig        `json:"brokers,omitempty"`
-	Packets []*packet.ParsedPacket `json:"packets,omitempty"`
-	Packet  *packet.ParsedPacket   `json:"packet,omitempty"`
+	Type     string                 `json:"type"` // "packet", "status", "brokers", "init", "topology", "cleared"
+	Status   string                 `json:"status,omitempty"`
+	Brokers  []*BrokerConfig        `json:"brokers,omitempty"`
+	Packets  []*packet.ParsedPacket `json:"packets,omitempty"`
+	Packet   *packet.ParsedPacket   `json:"packet,omitempty"`
+	Topology *storage.TopologyGraph `json:"topology,omitempty"`
 }
 
 func main() {
 	portFlag := flag.String("port", "", "HTTP port to listen on (e.g. 8085)")
 	cfgFlag := flag.String("config", "brokers.json", "Path to brokers configuration file")
+	dbFlag := flag.String("db", "analyzer.db", "Path to SQLite database file")
 	flag.Parse()
 
 	if *cfgFlag != "" {
@@ -85,6 +89,15 @@ func main() {
 	simulate := getEnv("SIMULATE", "false")
 
 	log.Printf("[Analyzer] Starting MeshCore Packet Analyzer...")
+
+	// Initialize SQLite Database
+	var err error
+	dbStorage, err = storage.InitDB(*dbFlag)
+	if err != nil {
+		log.Fatalf("[DB] Failed to initialize SQLite database: %v", err)
+	}
+	defer dbStorage.Close()
+	log.Printf("[DB] SQLite database initialized at: %s", *dbFlag)
 
 	// Load persisted brokers configuration from disk
 	loadBrokersConfig()
@@ -122,6 +135,10 @@ func main() {
 			handleHealth(w, r)
 		case r.URL.Path == "/api/brokers":
 			handleBrokersApi(w, r)
+		case r.URL.Path == "/api/topology":
+			handleTopologyApi(w, r)
+		case r.URL.Path == "/api/clear":
+			handleClearApi(w, r)
 		case r.URL.Path == "/api/simulate":
 			handleSimulate(w, r)
 		default:
@@ -203,7 +220,6 @@ func loadBrokersConfig() {
 	}
 	mu.Unlock()
 
-	// Connect enabled brokers
 	for _, b := range savedBrokers {
 		if b.Enabled {
 			go connectMQTT(b)
@@ -413,6 +429,10 @@ func removeBroker(id string) {
 }
 
 func addAndBroadcastPacket(pkt *packet.ParsedPacket) {
+	if dbStorage != nil {
+		dbStorage.RecordPacket(pkt)
+	}
+
 	mu.Lock()
 	if len(recentPkts) >= 20 {
 		recentPkts = recentPkts[1:]
@@ -420,9 +440,15 @@ func addAndBroadcastPacket(pkt *packet.ParsedPacket) {
 	recentPkts = append(recentPkts, pkt)
 	mu.Unlock()
 
+	var topo *storage.TopologyGraph
+	if dbStorage != nil {
+		topo, _ = dbStorage.GetTopologyGraph()
+	}
+
 	broadcastJson(WsMessage{
-		Type:   "packet",
-		Packet: pkt,
+		Type:     "packet",
+		Packet:   pkt,
+		Topology: topo,
 	})
 }
 
@@ -484,10 +510,16 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	clients[clientConn] = true
 	mu.Unlock()
 
+	var topo *storage.TopologyGraph
+	if dbStorage != nil {
+		topo, _ = dbStorage.GetTopologyGraph()
+	}
+
 	initMsg := WsMessage{
-		Type:    "init",
-		Brokers: getBrokersList(),
-		Packets: getRecentPacketsCopy(),
+		Type:     "init",
+		Brokers:  getBrokersList(),
+		Packets:  getRecentPacketsCopy(),
+		Topology: topo,
 	}
 	_ = clientConn.WriteJSON(initMsg)
 
@@ -506,7 +538,7 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 			}
 
 			var req struct {
-				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker"
+				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker", "clear_db"
 				ID       string `json:"id"`
 				Host     string `json:"host"`
 				Port     string `json:"port"`
@@ -534,10 +566,33 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 					removeBroker(req.ID)
 				} else if req.Action == "toggle_broker" && req.ID != "" && req.Enabled != nil {
 					toggleBroker(req.ID, *req.Enabled)
+				} else if req.Action == "clear_db" {
+					clearAllData()
 				}
 			}
 		}
 	}()
+}
+
+func clearAllData() {
+	if dbStorage != nil {
+		_ = dbStorage.ClearDatabase()
+	}
+
+	mu.Lock()
+	recentPkts = make([]*packet.ParsedPacket, 0, 20)
+	mu.Unlock()
+
+	var emptyTopo *storage.TopologyGraph
+	if dbStorage != nil {
+		emptyTopo, _ = dbStorage.GetTopologyGraph()
+	}
+
+	broadcastJson(WsMessage{
+		Type:     "cleared",
+		Packets:  []*packet.ParsedPacket{},
+		Topology: emptyTopo,
+	})
 }
 
 func handleBrokersApi(w http.ResponseWriter, r *http.Request) {
@@ -573,6 +628,26 @@ func handleBrokersApi(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(getBrokersList())
+}
+
+func handleTopologyApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if dbStorage == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []string{}, "edges": []string{}})
+		return
+	}
+	topo, err := dbStorage.GetTopologyGraph()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(topo)
+}
+
+func handleClearApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	clearAllData()
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -616,11 +691,23 @@ func createSimulatedPacket() *packet.ParsedPacket {
 	case 0x42:
 		hopsBytes = []byte{0xC1, 0xD2, 0xE3, 0xF4}
 	case 0x82:
-		hopsBytes = []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
+		hopsBytes = []byte{0x03, 0x3D, 0xA9, 0xE5, 0x6A, 0x45}
 	}
 
-	rawBuf := []byte{0x05, pathByte}
+	headerByte := byte(0x05) // GRP_TXT by default
+	if time.Now().UnixNano()%4 == 0 {
+		headerByte = byte(0x11) // ADVERT: payloadType=4 -> (4<<2)|1 = 0x11
+	}
+
+	rawBuf := []byte{headerByte, pathByte}
 	rawBuf = append(rawBuf, hopsBytes...)
+
+	if headerByte == 0x11 {
+		// Append Advert payload (Key + Name)
+		rawBuf = append(rawBuf, []byte{0x03, 0x3D, 0xA9, 0xE5}...)
+		rawBuf = append(rawBuf, []byte("PL-KRK-REP-1")...)
+	}
+
 	rawHex := hex.EncodeToString(rawBuf)
 
 	regions := []string{"KRK", "WAW", "RZE", "RDO", "GDN"}
