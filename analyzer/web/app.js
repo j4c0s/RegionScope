@@ -36,6 +36,9 @@
       noHops: 'Brak repeaterów (Bezpośrednio)',
       bytesCount: 'bajt',
       bytesCountPlural: 'bajty',
+      btnPause: 'Pauza',
+      btnResume: 'Wznów',
+      btnRemove: 'Usuń',
     },
     en: {
       subtitle: 'MQTT Listening & Path Analysis',
@@ -70,6 +73,9 @@
       noHops: 'No repeaters (Direct)',
       bytesCount: 'byte',
       bytesCountPlural: 'bytes',
+      btnPause: 'Pause',
+      btnResume: 'Resume',
+      btnRemove: 'Delete',
     }
   };
 
@@ -184,6 +190,12 @@
     }
   }
 
+  function toggleBroker(id, enabled) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: 'toggle_broker', id: id, enabled: enabled }));
+    }
+  }
+
   // --- WebSocket Connection ---
   function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -259,7 +271,6 @@
       if (map.has(key)) {
         const existing = map.get(key);
         existing.count += (p.count || 1);
-        // Keep latest timestamp and info
         if (p.timestamp > existing.timestamp) {
           existing.timestamp = p.timestamp;
           if (p.region) existing.region = p.region;
@@ -270,12 +281,11 @@
       }
     }
 
-    // Sort by latest timestamp descending
     const grouped = Array.from(map.values()).sort((a, b) => {
       return (b.timestamp || '').localeCompare(a.timestamp || '');
     });
 
-    return grouped.slice(0, 20); // Top 20 grouped items
+    return grouped.slice(0, 20);
   }
 
   // --- Render Functions ---
@@ -303,7 +313,6 @@
 
     packetTableBody.innerHTML = displayList.map(p => {
       const isNew = (p.hash && p.hash === newPktId) || p.timestamp === newPktId;
-      const pathSizeText = p.path_byte_size > 1 ? t.bytesCountPlural : t.bytesCount;
       const pathBadgeClass = `badge-path-${p.path_byte_size || 1}`;
 
       let hopsHtml = '';
@@ -338,6 +347,7 @@
   }
 
   function renderBrokers() {
+    const t = translations[currentLang];
     activeBrokersVal.textContent = brokers.filter(b => b.status === 'connected').length;
     brokerCountBadge.textContent = brokers.length;
 
@@ -346,19 +356,36 @@
       return;
     }
 
-    brokersList.innerHTML = brokers.map(b => `
-      <div class="broker-item">
-        <div class="broker-info">
-          <span class="broker-url">${escapeHtml(b.broker)}</span>
-          <span class="broker-topic">Topic: ${escapeHtml(b.topic || 'meshcore/#')} &bull; Status: <strong style="color:${getBrokerStatusColor(b.status)}">${b.status}</strong></span>
+    brokersList.innerHTML = brokers.map(b => {
+      const isEnabled = b.enabled !== false;
+      const toggleBtnText = isEnabled ? t.btnPause : t.btnResume;
+      const toggleBtnClass = isEnabled ? 'btn-amber' : 'btn-green';
+
+      return `
+        <div class="broker-item">
+          <div class="broker-info">
+            <span class="broker-url">${escapeHtml(b.broker)}</span>
+            <span class="broker-topic">Topic: ${escapeHtml(b.topic || 'meshcore/#')} &bull; Status: <strong style="color:${getBrokerStatusColor(b.status)}">${b.status}</strong></span>
+          </div>
+          <div class="broker-actions">
+            <button type="button" class="btn-sm ${toggleBtnClass}" data-toggle-id="${b.id}" data-enabled="${!isEnabled}">${toggleBtnText}</button>
+            <button type="button" class="btn-danger btn-sm" data-id="${b.id}">${t.btnRemove}</button>
+          </div>
         </div>
-        <button type="button" class="btn-danger" data-id="${b.id}">Usuń</button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     brokersList.querySelectorAll('.btn-danger').forEach(btn => {
       btn.addEventListener('click', () => {
         removeBroker(btn.getAttribute('data-id'));
+      });
+    });
+
+    brokersList.querySelectorAll('[data-toggle-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-toggle-id');
+        const nextState = btn.getAttribute('data-enabled') === 'true';
+        toggleBroker(id, nextState);
       });
     });
   }
@@ -366,6 +393,7 @@
   function getBrokerStatusColor(status) {
     if (status === 'connected') return 'var(--accent-green)';
     if (status === 'connecting') return 'var(--accent-amber)';
+    if (status === 'paused') return 'var(--text-muted)';
     return 'var(--accent-red)';
   }
 
