@@ -62,9 +62,18 @@
       <!-- Live Packets Table Section -->
       <section class="table-container">
         <div class="table-header">
-          <h2 data-i18n="liveTitle">Ostatnie 20 Odebranych Pakietów Live</h2>
+          <h2 data-i18n="liveTitle">Ostatnie Odebrane Pakiety Live</h2>
           <div class="table-actions">
-            <span class="live-dot"></span> <span data-i18n="liveFeed">Na żywo (WebSockets)</span>
+            <!-- Group By Hash Checkbox -->
+            <label class="toggle-control" title="Grupuj pakiety o tym samym hashu i zliczaj wystąpienia">
+              <input type="checkbox" id="groupByHashToggle">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label" data-i18n="groupByHash">Grupuj po hashu</span>
+            </label>
+
+            <div class="live-indicator">
+              <span class="live-dot"></span> <span data-i18n="liveFeed">Na żywo (WebSockets)</span>
+            </div>
           </div>
         </div>
 
@@ -73,12 +82,13 @@
           <table class="packet-table" id="packetTable">
             <thead>
               <tr>
-                <th style="width: 130px;" data-i18n="colTime">Czas</th>
-                <th style="width: 90px;" data-i18n="colRegion">Region</th>
-                <th style="width: 170px;" data-i18n="colOrigin">Obserwator / Węzeł</th>
+                <th style="width: 120px;" data-i18n="colTime">Czas</th>
+                <th style="width: 100px;" data-i18n="colRegion">Region / Scope</th>
+                <th style="width: 160px;" data-i18n="colOrigin">Obserwator / Węzeł</th>
                 <th style="width: 130px;" data-i18n="colPathLen">Długość ścieżki</th>
                 <th data-i18n="colHops">Repeatery w Ścieżce</th>
                 <th style="width: 130px;" data-i18n="colHash">Hash</th>
+                <th style="width: 90px;" id="thCount" class="hidden" data-i18n="colCount">Ilość</th>
                 <th data-i18n="colHex">Raw Hex</th>
               </tr>
             </thead>
@@ -98,7 +108,7 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <p>MeshCore Packet Path Analyzer &bull; Standalone Desktop / VPS Service</p>
+      <p>MeshCore Packet Path Analyzer &bull; Standalone PC / VPS Service</p>
     </footer>
   </div>
 

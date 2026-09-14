@@ -13,7 +13,7 @@ type ParsedPacket struct {
 	Timestamp    string   `json:"timestamp"`
 	Topic        string   `json:"topic"`
 	Observer     string   `json:"observer,omitempty"`
-	Region       string   `json:"region,omitempty"`
+	Region       string   `json:"region,omitempty"` // Region / Scope (e.g. KRK, WAW, RZE)
 	Origin       string   `json:"origin,omitempty"`
 	Hash         string   `json:"hash,omitempty"`
 	RawHex       string   `json:"raw_hex"`
@@ -24,6 +24,7 @@ type ParsedPacket struct {
 	Hops         []string `json:"hops"`
 	Len          int      `json:"len"`
 	Direction    string   `json:"direction,omitempty"`
+	Count        int      `json:"count,omitempty"` // Used when grouped by hash
 }
 
 // MqttPayloadStruct helps parse JSON payloads from MeshCore MQTT messages.
@@ -31,6 +32,8 @@ type MqttPayloadStruct struct {
 	Timestamp  string          `json:"timestamp"`
 	Hash       string          `json:"hash"`
 	Origin     string          `json:"origin"`
+	Region     string          `json:"region"`
+	Scope      string          `json:"scope"`
 	Type       string          `json:"type"`
 	Direction  string          `json:"direction"`
 	Time       string          `json:"time"`
@@ -50,12 +53,13 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Topic:     topic,
 		Hops:      []string{},
+		Count:     1,
 	}
 
 	// Parse topic structure: meshcore/<REGION>/<OBSERVER>/...
 	parts := strings.Split(topic, "/")
-	if len(parts) >= 2 {
-		parsed.Region = parts[1]
+	if len(parts) >= 2 && parts[1] != "" {
+		parsed.Region = strings.ToUpper(parts[1])
 	}
 	if len(parts) >= 3 {
 		parsed.Observer = parts[2]
@@ -70,10 +74,15 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 			parsed.Timestamp = mqttMsg.Timestamp
 		}
 		if mqttMsg.Hash != "" {
-			parsed.Hash = mqttMsg.Hash
+			parsed.Hash = strings.ToUpper(mqttMsg.Hash)
 		}
 		if mqttMsg.Origin != "" {
 			parsed.Origin = mqttMsg.Origin
+		}
+		if mqttMsg.Region != "" {
+			parsed.Region = strings.ToUpper(mqttMsg.Region)
+		} else if mqttMsg.Scope != "" {
+			parsed.Region = strings.ToUpper(mqttMsg.Scope)
 		}
 		if mqttMsg.Direction != "" {
 			parsed.Direction = mqttMsg.Direction

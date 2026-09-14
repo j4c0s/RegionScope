@@ -12,15 +12,17 @@
       statPackets: 'Wyświetlane pakiety',
       statRate: 'Aktywne Brokerzy MQTT',
       statLastPkt: 'Ostatni pakiet',
-      liveTitle: 'Ostatnie 20 Odebranych Pakietów Live',
+      liveTitle: 'Ostatnie Odebrane Pakiety Live',
       liveFeed: 'Na żywo (WebSockets)',
       colTime: 'Czas',
-      colRegion: 'Region',
+      colRegion: 'Region / Scope',
       colOrigin: 'Obserwator / Węzeł',
       colPathLen: 'Długość ścieżki',
       colHops: 'Repeatery w Ścieżce',
       colHash: 'Hash',
+      colCount: 'Ilość',
       colHex: 'Raw Hex',
+      groupByHash: 'Grupuj po hashu',
       emptyTitle: 'Oczekiwanie na pakiety MeshCore...',
       emptyDesc: 'Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.',
       modalTitle: 'Konfiguracja Serwerów MQTT',
@@ -44,15 +46,17 @@
       statPackets: 'Displayed Packets',
       statRate: 'Active MQTT Brokers',
       statLastPkt: 'Last Packet',
-      liveTitle: 'Latest 20 Received Live Packets',
+      liveTitle: 'Latest Received Live Packets',
       liveFeed: 'Live (WebSockets)',
       colTime: 'Time',
-      colRegion: 'Region',
+      colRegion: 'Region / Scope',
       colOrigin: 'Observer / Node',
       colPathLen: 'Path Length',
       colHops: 'Path Repeaters',
       colHash: 'Hash',
+      colCount: 'Count',
       colHex: 'Raw Hex',
+      groupByHash: 'Group by Hash',
       emptyTitle: 'Waiting for MeshCore packets...',
       emptyDesc: 'When packets appear in the MQTT network, they will automatically be displayed here.',
       modalTitle: 'MQTT Servers Configuration',
@@ -70,7 +74,9 @@
   };
 
   let currentLang = localStorage.getItem('mc_analyzer_lang') || 'pl';
-  let packets = [];
+  let isGroupedByHash = localStorage.getItem('mc_group_by_hash') === 'true';
+
+  let rawPackets = []; // All raw incoming packets
   let brokers = [];
   let ws = null;
 
@@ -91,6 +97,24 @@
   const lastPktTimeVal = document.getElementById('lastPktTimeVal');
   const packetTableBody = document.getElementById('packetTableBody');
   const emptyState = document.getElementById('emptyState');
+  const groupByHashToggle = document.getElementById('groupByHashToggle');
+  const thCount = document.getElementById('thCount');
+
+  groupByHashToggle.checked = isGroupedByHash;
+  if (isGroupedByHash) {
+    thCount.classList.remove('hidden');
+  }
+
+  groupByHashToggle.addEventListener('change', (e) => {
+    isGroupedByHash = e.target.checked;
+    localStorage.setItem('mc_group_by_hash', isGroupedByHash);
+    if (isGroupedByHash) {
+      thCount.classList.remove('hidden');
+    } else {
+      thCount.classList.add('hidden');
+    }
+    renderPackets();
+  });
 
   // --- i18n ---
   function applyLanguage(lang) {
@@ -182,7 +206,7 @@
             renderBrokers();
           }
           if (msg.packets && msg.packets.length > 0) {
-            packets = msg.packets.reverse();
+            rawPackets = msg.packets.reverse();
             renderPackets();
           }
         } else if (msg.type === 'packet' && msg.packet) {
@@ -219,20 +243,50 @@
   }
 
   function handleIncomingPacket(pkt) {
-    packets.unshift(pkt);
-    if (packets.length > 20) {
-      packets.pop();
+    rawPackets.unshift(pkt);
+    if (rawPackets.length > 200) { // Keep last 200 raw packets for grouping
+      rawPackets.pop();
     }
 
     renderPackets(pkt.hash || pkt.timestamp);
   }
 
+  function getGroupedPackets() {
+    const map = new Map();
+
+    for (const p of rawPackets) {
+      const key = p.hash || p.raw_hex || p.timestamp;
+      if (map.has(key)) {
+        const existing = map.get(key);
+        existing.count += (p.count || 1);
+        // Keep latest timestamp and info
+        if (p.timestamp > existing.timestamp) {
+          existing.timestamp = p.timestamp;
+          if (p.region) existing.region = p.region;
+          if (p.origin) existing.origin = p.origin;
+        }
+      } else {
+        map.set(key, { ...p, count: p.count || 1 });
+      }
+    }
+
+    // Sort by latest timestamp descending
+    const grouped = Array.from(map.values()).sort((a, b) => {
+      return (b.timestamp || '').localeCompare(a.timestamp || '');
+    });
+
+    return grouped.slice(0, 20); // Top 20 grouped items
+  }
+
   // --- Render Functions ---
   function renderPackets(newPktId) {
     const t = translations[currentLang];
-    packetCountVal.textContent = `${packets.length} / 20`;
 
-    if (packets.length === 0) {
+    let displayList = isGroupedByHash ? getGroupedPackets() : rawPackets.slice(0, 20);
+
+    packetCountVal.textContent = `${displayList.length} / 20`;
+
+    if (displayList.length === 0) {
       emptyState.classList.remove('hidden');
       packetTableBody.innerHTML = '';
       lastPktTimeVal.textContent = '-';
@@ -241,13 +295,13 @@
 
     emptyState.classList.add('hidden');
 
-    const firstPkt = packets[0];
+    const firstPkt = displayList[0];
     if (firstPkt) {
       const timeStr = formatTime(firstPkt.timestamp);
       lastPktTimeVal.textContent = timeStr;
     }
 
-    packetTableBody.innerHTML = packets.map(p => {
+    packetTableBody.innerHTML = displayList.map(p => {
       const isNew = (p.hash && p.hash === newPktId) || p.timestamp === newPktId;
       const pathSizeText = p.path_byte_size > 1 ? t.bytesCountPlural : t.bytesCount;
       const pathBadgeClass = `badge-path-${p.path_byte_size || 1}`;
@@ -259,6 +313,8 @@
       } else {
         hopsHtml = `<span style="color:var(--text-muted);font-size:12px;">${t.noHops}</span>`;
       }
+
+      const countCol = isGroupedByHash ? `<td><span class="badge-count-occurrences">x${p.count || 1}</span></td>` : '';
 
       return `
         <tr class="packet-row ${isNew ? 'new-entry' : ''}">
@@ -272,7 +328,8 @@
           </td>
           <td>${hopsHtml}</td>
           <td class="code-font" style="color:var(--accent-blue);">${escapeHtml(p.hash || '-')}</td>
-          <td class="code-font" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.raw_hex || '')}">
+          ${countCol}
+          <td class="code-font" style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.raw_hex || '')}">
             ${escapeHtml(p.raw_hex || '-')}
           </td>
         </tr>
