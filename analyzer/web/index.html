@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeshCore MQTT Packet Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header / Navbar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="logo-icon">📡</div>
+        <div>
+          <h1 class="nav-title">MeshCore Analyzer</h1>
+          <p class="nav-subtitle" data-i18n="subtitle">Nasłuchiwanie MQTT & Analiza Ścieżek</p>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <!-- Status Indicator -->
+        <div class="status-indicator" id="statusBadge">
+          <span class="status-dot disconnected" id="statusDot"></span>
+          <span id="statusText" data-i18n="statusConnecting">Łączenie z serwerem...</span>
+        </div>
+
+        <!-- Add MQTT Server Button -->
+        <button type="button" class="btn btn-secondary" id="openBrokersModalBtn">
+          <span>⚙️</span> <span data-i18n="mqttServers">Serwery MQTT</span>
+          <span class="badge-count" id="brokerCountBadge">0</span>
+        </button>
+
+        <!-- Language Toggle -->
+        <div class="lang-toggle">
+          <button type="button" class="lang-btn active" id="langPlBtn">PL</button>
+          <button type="button" class="lang-btn" id="langEnBtn">EN</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Stats Overview Bar -->
+      <section class="stats-bar">
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="statPackets">Wyświetlane pakiety</div>
+          <div class="stat-value" id="packetCountVal">0 / 20</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="statRate">Aktywne Brokerzy MQTT</div>
+          <div class="stat-value" id="activeBrokersVal">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="statLastPkt">Ostatni pakiet</div>
+          <div class="stat-value highlight" id="lastPktTimeVal">-</div>
+        </div>
+      </section>
+
+      <!-- Live Packets Table Section -->
+      <section class="table-container">
+        <div class="table-header">
+          <h2 data-i18n="liveTitle">Ostatnie 20 Odebranych Pakietów Live</h2>
+          <div class="table-actions">
+            <span class="live-dot"></span> <span data-i18n="liveFeed">Na żywo (WebSockets)</span>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrapper">
+          <table class="packet-table" id="packetTable">
+            <thead>
+              <tr>
+                <th style="width: 130px;" data-i18n="colTime">Czas</th>
+                <th style="width: 90px;" data-i18n="colRegion">Region</th>
+                <th style="width: 170px;" data-i18n="colOrigin">Obserwator / Węzeł</th>
+                <th style="width: 130px;" data-i18n="colPathLen">Długość ścieżki</th>
+                <th data-i18n="colHops">Repeatery w Ścieżce</th>
+                <th style="width: 130px;" data-i18n="colHash">Hash</th>
+                <th data-i18n="colHex">Raw Hex</th>
+              </tr>
+            </thead>
+            <tbody id="packetTableBody">
+              <!-- Empty state initially -->
+            </tbody>
+          </table>
+
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">📻</div>
+            <h3 data-i18n="emptyTitle">Oczekiwanie na pakiety MeshCore...</h3>
+            <p data-i18n="emptyDesc">Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>MeshCore Packet Path Analyzer &bull; Standalone Desktop / VPS Service</p>
+    </footer>
+  </div>
+
+  <!-- MQTT Servers Modal -->
+  <div class="modal-overlay hidden" id="brokersModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 data-i18n="modalTitle">Konfiguracja Serwerów MQTT</h3>
+        <button type="button" class="modal-close" id="closeBrokersModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="addBrokerForm" class="broker-form">
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="inputHost" data-i18n="labelHost">Adres serwera (Host / IP)</label>
+              <input type="text" id="inputHost" placeholder="mqtt.marwoj.net" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="inputPort" data-i18n="labelPort">Port</label>
+              <input type="number" id="inputPort" placeholder="1883" value="1883" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="inputUser" data-i18n="labelUser">Użytkownik (opcjonalnie)</label>
+              <input type="text" id="inputUser" placeholder="username">
+            </div>
+            <div class="form-group flex-1">
+              <label for="inputPass" data-i18n="labelPass">Hasło (opcjonalnie)</label>
+              <input type="password" id="inputPass" placeholder="••••••••">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inputTopic" data-i18n="labelTopic">Temat MQTT (Topic)</label>
+            <input type="text" id="inputTopic" placeholder="meshcore/#" value="meshcore/#" required>
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width: 100%;" data-i18n="btnAddServer">Połącz i Dodaj Serwer</button>
+        </form>
+
+        <hr class="modal-divider">
+
+        <h4 data-i18n="connectedServersTitle">Aktywne Połączenia MQTT</h4>
+        <div id="brokersList" class="brokers-list">
+          <!-- Active broker items -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
