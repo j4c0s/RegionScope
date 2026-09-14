@@ -4,10 +4,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +31,7 @@ var (
 	clients     = make(map[*ClientConn]bool)
 	recentPkts  = make([]*packet.ParsedPacket, 0, 20)
 	brokerConns = make(map[string]*BrokerConfig)
+	configFile  = "brokers.json"
 )
 
 type ClientConn struct {
@@ -42,33 +46,50 @@ func (c *ClientConn) WriteJSON(v interface{}) error {
 }
 
 type BrokerConfig struct {
-	ID     string      `json:"id"`
-	Broker string      `json:"broker"` // e.g. "tcp://mqtt.marwoj.net:1883"
-	Topic  string      `json:"topic"`  // e.g. "meshcore/#"
-	User   string      `json:"user,omitempty"`
-	Pass   string      `json:"pass,omitempty"`
-	Status string      `json:"status"` // "connected", "connecting", "disconnected", "error"
-	Client mqtt.Client `json:"-"`
+	ID      string      `json:"id"`
+	Broker  string      `json:"broker"` // e.g. "tcp://mqtt.marwoj.net:1883"
+	Topic   string      `json:"topic"`  // e.g. "meshcore/#"
+	User    string      `json:"user,omitempty"`
+	Pass    string      `json:"pass,omitempty"`
+	Enabled bool        `json:"enabled"`
+	Status  string      `json:"status"` // "connected", "connecting", "disconnected", "paused", "error"
+	Client  mqtt.Client `json:"-"`
 }
 
 type WsMessage struct {
-	Type    string               `json:"type"` // "packet", "status", "brokers", "init"
-	Status  string               `json:"status,omitempty"`
-	Brokers []*BrokerConfig      `json:"brokers,omitempty"`
+	Type    string                 `json:"type"` // "packet", "status", "brokers", "init"
+	Status  string                 `json:"status,omitempty"`
+	Brokers []*BrokerConfig        `json:"brokers,omitempty"`
 	Packets []*packet.ParsedPacket `json:"packets,omitempty"`
-	Packet  *packet.ParsedPacket `json:"packet,omitempty"`
+	Packet  *packet.ParsedPacket   `json:"packet,omitempty"`
 }
 
 func main() {
-	port := getEnv("HTTP_PORT", "8080")
+	portFlag := flag.String("port", "", "HTTP port to listen on (e.g. 8085)")
+	cfgFlag := flag.String("config", "brokers.json", "Path to brokers configuration file")
+	flag.Parse()
+
+	if *cfgFlag != "" {
+		configFile = *cfgFlag
+	}
+
+	requestedPort := *portFlag
+	if requestedPort == "" {
+		requestedPort = getEnv("HTTP_PORT", "8085")
+	}
+
 	defaultBrokers := getEnv("MQTT_BROKERS", getEnv("MQTT_BROKER", ""))
 	defaultTopic := getEnv("MQTT_TOPIC", "meshcore/#")
 	defaultUser := getEnv("MQTT_USERNAME", "")
 	defaultPass := getEnv("MQTT_PASSWORD", "")
 	simulate := getEnv("SIMULATE", "false")
 
-	log.Printf("[Analyzer] Starting MeshCore Packet Analyzer on port %s...", port)
+	log.Printf("[Analyzer] Starting MeshCore Packet Analyzer...")
 
+	// Load persisted brokers configuration from disk
+	loadBrokersConfig()
+
+	// If env variable brokers provided and not in config, add them
 	if defaultBrokers != "" {
 		brokers := strings.Split(defaultBrokers, ",")
 		for _, b := range brokers {
@@ -77,7 +98,9 @@ func main() {
 				if !strings.HasPrefix(b, "tcp://") && !strings.HasPrefix(b, "ssl://") && !strings.HasPrefix(b, "ws://") && !strings.HasPrefix(b, "wss://") {
 					b = "tcp://" + b
 				}
-				addBroker(b, defaultTopic, defaultUser, defaultPass)
+				if !brokerExists(b) {
+					addBroker(b, defaultTopic, defaultUser, defaultPass, true)
+				}
 			}
 		}
 	}
@@ -86,10 +109,8 @@ func main() {
 		go runSimulator()
 	}
 
-	webDir := getEnv("WEB_DIR", "web")
-	if _, err := os.Stat(webDir); os.IsNotExist(err) {
-		webDir = "../../web"
-	}
+	webDir := resolveWebDir()
+	log.Printf("[Analyzer] Serving web UI from: %s", webDir)
 
 	fs := http.FileServer(http.Dir(webDir))
 
@@ -108,11 +129,143 @@ func main() {
 		}
 	})
 
-	serverAddr := ":" + port
-	log.Printf("[Analyzer] Server listening on http://localhost:%s/", port)
-	if err := http.ListenAndServe(serverAddr, handler); err != nil {
-		log.Fatalf("Server ListenAndServe error: %v", err)
+	listener, portStr, err := bindAvailablePort(requestedPort)
+	if err != nil {
+		log.Fatalf("[Analyzer] Failed to bind any HTTP port: %v", err)
 	}
+
+	log.Printf("==========================================================")
+	log.Printf("[Analyzer] SUCCESS! Server running on PC.")
+	log.Printf("[Analyzer] Open browser at: http://localhost:%s/", portStr)
+	log.Printf("==========================================================")
+
+	if err := http.Serve(listener, handler); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}
+
+func resolveWebDir() string {
+	candidates := []string{
+		getEnv("WEB_DIR", ""),
+		"web",
+		"analyzer/web",
+		"../web",
+		"../../web",
+	}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if info, err := os.Stat(c); err == nil && info.IsDir() {
+			return c
+		}
+	}
+	return "web"
+}
+
+func brokerExists(brokerUrl string) bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, b := range brokerConns {
+		if b.Broker == brokerUrl {
+			return true
+		}
+	}
+	return false
+}
+
+func loadBrokersConfig() {
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		return
+	}
+
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		log.Printf("[Config] Failed to read %s: %v", configFile, err)
+		return
+	}
+
+	var savedBrokers []*BrokerConfig
+	if err := json.Unmarshal(data, &savedBrokers); err != nil {
+		log.Printf("[Config] Failed to parse %s: %v", configFile, err)
+		return
+	}
+
+	mu.Lock()
+	for _, b := range savedBrokers {
+		if b.ID == "" {
+			b.ID = randomID()
+		}
+		if b.Status == "" {
+			b.Status = "disconnected"
+		}
+		brokerConns[b.ID] = b
+	}
+	mu.Unlock()
+
+	// Connect enabled brokers
+	for _, b := range savedBrokers {
+		if b.Enabled {
+			go connectMQTT(b)
+		} else {
+			b.Status = "paused"
+		}
+	}
+
+	log.Printf("[Config] Loaded %d brokers from %s", len(savedBrokers), configFile)
+}
+
+func saveBrokersConfig() {
+	mu.RLock()
+	list := make([]*BrokerConfig, 0, len(brokerConns))
+	for _, b := range brokerConns {
+		cp := &BrokerConfig{
+			ID:      b.ID,
+			Broker:  b.Broker,
+			Topic:   b.Topic,
+			User:    b.User,
+			Pass:    b.Pass,
+			Enabled: b.Enabled,
+			Status:  b.Status,
+		}
+		list = append(list, cp)
+	}
+	mu.RUnlock()
+
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		log.Printf("[Config] Failed to marshal brokers config: %v", err)
+		return
+	}
+
+	dir := filepath.Dir(configFile)
+	if dir != "." && dir != "" {
+		_ = os.MkdirAll(dir, 0755)
+	}
+
+	if err := os.WriteFile(configFile, data, 0644); err != nil {
+		log.Printf("[Config] Failed to write %s: %v", configFile, err)
+	} else {
+		log.Printf("[Config] Saved %d brokers to %s", len(list), configFile)
+	}
+}
+
+func bindAvailablePort(startPort string) (net.Listener, string, error) {
+	portNum, err := strconv.Atoi(startPort)
+	if err != nil || portNum <= 0 {
+		portNum = 8085
+	}
+
+	for p := portNum; p < portNum+20; p++ {
+		addr := fmt.Sprintf(":%d", p)
+		l, err := net.Listen("tcp", addr)
+		if err == nil {
+			return l, strconv.Itoa(p), nil
+		}
+		log.Printf("[Analyzer] Port %d busy, trying next...", p)
+	}
+
+	return nil, "", fmt.Errorf("all ports in range %d-%d are busy", portNum, portNum+20)
 }
 
 func getEnv(key, defaultVal string) string {
@@ -128,28 +281,63 @@ func randomID() string {
 	return hex.EncodeToString(b)
 }
 
-func addBroker(brokerUrl, topic, user, pass string) *BrokerConfig {
+func addBroker(brokerUrl, topic, user, pass string, enabled bool) *BrokerConfig {
 	if topic == "" {
 		topic = "meshcore/#"
 	}
 	id := randomID()
 
 	cfg := &BrokerConfig{
-		ID:     id,
-		Broker: brokerUrl,
-		Topic:  topic,
-		User:   user,
-		Pass:   pass,
-		Status: "connecting",
+		ID:      id,
+		Broker:  brokerUrl,
+		Topic:   topic,
+		User:    user,
+		Pass:    pass,
+		Enabled: enabled,
+		Status:  "connecting",
+	}
+
+	if !enabled {
+		cfg.Status = "paused"
 	}
 
 	mu.Lock()
 	brokerConns[id] = cfg
 	mu.Unlock()
 
-	go connectMQTT(cfg)
+	if enabled {
+		go connectMQTT(cfg)
+	}
+
+	saveBrokersConfig()
 	broadcastBrokersStatus()
 	return cfg
+}
+
+func toggleBroker(id string, enabled bool) {
+	mu.Lock()
+	cfg, exists := brokerConns[id]
+	if !exists {
+		mu.Unlock()
+		return
+	}
+
+	cfg.Enabled = enabled
+	if !enabled {
+		cfg.Status = "paused"
+		if cfg.Client != nil && cfg.Client.IsConnected() {
+			cfg.Client.Disconnect(250)
+		}
+		cfg.Client = nil
+		mu.Unlock()
+	} else {
+		cfg.Status = "connecting"
+		mu.Unlock()
+		go connectMQTT(cfg)
+	}
+
+	saveBrokersConfig()
+	broadcastBrokersStatus()
 }
 
 func connectMQTT(cfg *BrokerConfig) {
@@ -187,7 +375,11 @@ func connectMQTT(cfg *BrokerConfig) {
 	opts.OnConnectionLost = func(c mqtt.Client, err error) {
 		log.Printf("[MQTT:%s] Connection lost on %s: %v", cfg.ID, cfg.Broker, err)
 		mu.Lock()
-		cfg.Status = "disconnected"
+		if cfg.Enabled {
+			cfg.Status = "disconnected"
+		} else {
+			cfg.Status = "paused"
+		}
 		mu.Unlock()
 		broadcastBrokersStatus()
 	}
@@ -197,7 +389,9 @@ func connectMQTT(cfg *BrokerConfig) {
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		log.Printf("[MQTT:%s] Initial connect error on %s: %v", cfg.ID, cfg.Broker, token.Error())
 		mu.Lock()
-		cfg.Status = "error"
+		if cfg.Enabled {
+			cfg.Status = "error"
+		}
 		mu.Unlock()
 		broadcastBrokersStatus()
 	}
@@ -213,6 +407,8 @@ func removeBroker(id string) {
 		delete(brokerConns, id)
 	}
 	mu.Unlock()
+
+	saveBrokersConfig()
 	broadcastBrokersStatus()
 }
 
@@ -288,7 +484,6 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	clients[clientConn] = true
 	mu.Unlock()
 
-	// Send initial state (brokers list + recent 20 packets)
 	initMsg := WsMessage{
 		Type:    "init",
 		Brokers: getBrokersList(),
@@ -311,13 +506,14 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 			}
 
 			var req struct {
-				Action   string `json:"action"`
+				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker"
 				ID       string `json:"id"`
 				Host     string `json:"host"`
 				Port     string `json:"port"`
 				Topic    string `json:"topic"`
 				Username string `json:"username"`
 				Password string `json:"password"`
+				Enabled  *bool  `json:"enabled"`
 			}
 
 			if err := json.Unmarshal(msgBytes, &req); err == nil {
@@ -332,10 +528,12 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 						if !strings.HasPrefix(brokerUrl, "tcp://") && !strings.HasPrefix(brokerUrl, "ssl://") && !strings.HasPrefix(brokerUrl, "ws://") && !strings.HasPrefix(brokerUrl, "wss://") {
 							brokerUrl = "tcp://" + brokerUrl + ":" + port
 						}
-						addBroker(brokerUrl, req.Topic, req.Username, req.Password)
+						addBroker(brokerUrl, req.Topic, req.Username, req.Password, true)
 					}
 				} else if req.Action == "remove_broker" && req.ID != "" {
 					removeBroker(req.ID)
+				} else if req.Action == "toggle_broker" && req.ID != "" && req.Enabled != nil {
+					toggleBroker(req.ID, *req.Enabled)
 				}
 			}
 		}
@@ -351,6 +549,7 @@ func handleBrokersApi(w http.ResponseWriter, r *http.Request) {
 			Topic    string `json:"topic"`
 			Username string `json:"username"`
 			Password string `json:"password"`
+			Enabled  *bool  `json:"enabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Host != "" {
 			port := req.Port
@@ -361,7 +560,11 @@ func handleBrokersApi(w http.ResponseWriter, r *http.Request) {
 			if !strings.HasPrefix(brokerUrl, "tcp://") && !strings.HasPrefix(brokerUrl, "ssl://") && !strings.HasPrefix(brokerUrl, "ws://") && !strings.HasPrefix(brokerUrl, "wss://") {
 				brokerUrl = "tcp://" + brokerUrl + ":" + port
 			}
-			cfg := addBroker(brokerUrl, req.Topic, req.Username, req.Password)
+			enabled := true
+			if req.Enabled != nil {
+				enabled = *req.Enabled
+			}
+			cfg := addBroker(brokerUrl, req.Topic, req.Username, req.Password, enabled)
 			json.NewEncoder(w).Encode(cfg)
 			return
 		}
