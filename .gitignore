@@ -38,3 +38,4 @@ docs/superpowers/
 deploy-live.sh
 deploy-staging.sh
 analyzer/analyzer.exe
+analyzer/brokers.json
