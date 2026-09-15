@@ -126,42 +126,63 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := time.Now().UTC().Format(time.RFC3339)
+
 	// 1. Resolve Hops prefixes using known nodes and topology adjacency
 	resolvedHops := make([]string, len(pkt.Hops))
 	for i, hop := range pkt.Hops {
 		var neighbors []string
-		if i > 0 {
-			neighbors = append(neighbors, pkt.Hops[i-1])
+		for j, h := range pkt.Hops {
+			if j != i {
+				neighbors = append(neighbors, h)
+			}
 		}
-		if i < len(pkt.Hops)-1 {
-			neighbors = append(neighbors, pkt.Hops[i+1])
+		if pkt.AdvertKey != "" {
+			neighbors = append(neighbors, pkt.AdvertKey)
 		}
+		if pkt.Observer != "" {
+			neighbors = append(neighbors, pkt.Observer)
+		}
+
 		resolvedHops[i] = s.resolvePrefixLocked(hop, neighbors)
 	}
 	pkt.ResolvedHops = resolvedHops
 
-	now := time.Now().UTC().Format(time.RFC3339)
-
 	// 2. Insert/Update Nodes & Edges for topology graph
-	// Rule: Exclude 1-byte path nodes from topology graph as requested by user
-	if pkt.PathByteSize >= 2 {
-		for i, hopID := range resolvedHops {
+	// Include 2B/3B nodes, and 1B nodes if resolved to 3B (len == 6)
+	for i, hopID := range resolvedHops {
+		if pkt.PathByteSize >= 2 || len(hopID) >= 6 {
 			s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, now)
 			if i > 0 {
-				s.upsertEdgeLocked(resolvedHops[i-1], hopID, now)
+				prevID := resolvedHops[i-1]
+				if pkt.PathByteSize >= 2 || len(prevID) >= 6 {
+					s.upsertEdgeLocked(prevID, hopID, now)
+				}
 			}
 		}
 	}
 
-	if pkt.AdvertKey != "" && len(pkt.AdvertKey) >= 4 {
+	// Link Last Hop to Observer node if present
+	if pkt.Observer != "" {
+		s.upsertNodeLocked(pkt.Observer, pkt.Observer, 0, 0, pkt.Region, 0, now)
+		if len(resolvedHops) > 0 {
+			lastHop := resolvedHops[len(resolvedHops)-1]
+			if pkt.PathByteSize >= 2 || len(lastHop) >= 6 {
+				s.upsertEdgeLocked(lastHop, pkt.Observer, now)
+			}
+		}
+	}
+
+	// Link Advert Node: Advert -> First Hop -> ... -> Last Hop -> Observer
+	if pkt.AdvertKey != "" {
 		s.upsertNodeLocked(pkt.AdvertKey, pkt.AdvertName, pkt.Lat, pkt.Lon, pkt.Region, pkt.PathByteSize, now)
 
-		// Link Advert node to the path hops/repeater network
 		if len(resolvedHops) > 0 {
-			// Link Advert to the first hop that forwarded it
-			s.upsertEdgeLocked(pkt.AdvertKey, resolvedHops[0], now)
+			firstHop := resolvedHops[0]
+			if pkt.PathByteSize >= 2 || len(firstHop) >= 6 {
+				s.upsertEdgeLocked(pkt.AdvertKey, firstHop, now)
+			}
 		} else if pkt.Observer != "" {
-			// If received direct by observer with no hops
 			s.upsertEdgeLocked(pkt.AdvertKey, pkt.Observer, now)
 		}
 	}
@@ -191,30 +212,83 @@ func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string 
 	var candidates []string
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err == nil {
+		if err := rows.Scan(&id); err == nil && len(id) == 6 {
 			candidates = append(candidates, id)
 		}
 	}
 
-	if len(candidates) == 1 {
-		return candidates[0]
+	if len(candidates) == 0 {
+		return prefix
 	}
 
-	if len(candidates) > 1 && len(neighbors) > 0 {
-		for _, cand := range candidates {
-			for _, neigh := range neighbors {
-				neighFull := s.resolvePrefixLocked(neigh, nil)
-				var count int
-				_ = s.db.QueryRow("SELECT COUNT(*) FROM edges WHERE (source=? AND target=?) OR (source=? AND target=?)", cand, neighFull, neighFull, cand).Scan(&count)
-				if count > 0 {
-					return cand
+	// Thresholds:
+	// 2B (len == 4): >= 2 matching neighbors
+	// 1B (len == 2): >= 3 matching neighbors
+	minRequired := 2
+	if len(prefix) <= 2 {
+		minRequired = 3
+	}
+
+	if len(neighbors) == 0 {
+		if len(candidates) == 1 && len(prefix) >= 4 {
+			return candidates[0]
+		}
+		return prefix
+	}
+
+	bestCand := ""
+	maxMatches := 0
+
+	for _, cand := range candidates {
+		candNeighbors := s.getNodeNeighborsLocked(cand)
+		matchCount := 0
+		for _, neigh := range neighbors {
+			neighUpper := strings.ToUpper(neigh)
+			for _, cNeigh := range candNeighbors {
+				cNeighUpper := strings.ToUpper(cNeigh)
+				if strings.HasPrefix(cNeighUpper, neighUpper) || strings.HasPrefix(neighUpper, cNeighUpper) {
+					matchCount++
+					break
 				}
 			}
 		}
+
+		if matchCount >= minRequired && matchCount > maxMatches {
+			maxMatches = matchCount
+			bestCand = cand
+		}
+	}
+
+	if bestCand != "" {
+		return bestCand
+	}
+
+	if len(prefix) >= 4 && len(candidates) == 1 {
 		return candidates[0]
 	}
 
 	return prefix
+}
+
+func (s *Storage) getNodeNeighborsLocked(nodeID string) []string {
+	rows, err := s.db.Query(`
+		SELECT target FROM edges WHERE source = ?
+		UNION
+		SELECT source FROM edges WHERE target = ?
+	`, nodeID, nodeID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var neighbors []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err == nil {
+			neighbors = append(neighbors, n)
+		}
+	}
+	return neighbors
 }
 
 func (s *Storage) upsertNodeLocked(id, name string, lat, lon float64, scope string, pathSize int, now string) {

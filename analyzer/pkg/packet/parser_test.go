@@ -110,3 +110,47 @@ func TestParseMeshCorePacket_JsonPayload(t *testing.T) {
 		t.Errorf("Hops mismatch: %v", parsed.Hops)
 	}
 }
+
+func TestParseMeshCorePacket_AdvertGPS(t *testing.T) {
+	// Header: PayloadType=ADVERT(0x04), Route=FLOOD(1) -> 0x11
+	// Path: 0 hops -> 0x00
+	pktBytes := []byte{0x11, 0x00}
+
+	// 100 bytes advert header: 32B PubKey, 4B Timestamp, 64B Sig
+	advertBuf := make([]byte, 100)
+	// PubKey 3-byte prefix: 671AC0
+	advertBuf[0] = 0x67
+	advertBuf[1] = 0x1A
+	advertBuf[2] = 0xC0
+
+	// AppData: flags = 0x90 (hasLocation 0x10 | hasName 0x80)
+	appData := []byte{0x90}
+	// Lat = 50.0 (50000000 = 0x02FAF080 LE int32)
+	latBytes := []byte{0x80, 0xF0, 0xFA, 0x02}
+	// Lon = 20.0 (20000000 = 0x01312D00 LE int32)
+	lonBytes := []byte{0x00, 0x2D, 0x31, 0x01}
+
+	appData = append(appData, latBytes...)
+	appData = append(appData, lonBytes...)
+	appData = append(appData, []byte("TestGPSNode\x00")...)
+
+	pktBytes = append(pktBytes, append(advertBuf, appData...)...)
+
+	parsed, err := ParseMeshCorePacket("meshcore/KRK/OBSERVER1/packets", []byte(hex.EncodeToString(pktBytes)))
+	if err != nil {
+		t.Fatalf("ParseMeshCorePacket failed: %v", err)
+	}
+
+	if parsed.AdvertKey != "671AC0" {
+		t.Errorf("AdvertKey = %s; want 671AC0", parsed.AdvertKey)
+	}
+	if parsed.AdvertName != "TestGPSNode" {
+		t.Errorf("AdvertName = %s; want TestGPSNode", parsed.AdvertName)
+	}
+	if parsed.Lat != 50.0 {
+		t.Errorf("Lat = %f; want 50.0", parsed.Lat)
+	}
+	if parsed.Lon != 20.0 {
+		t.Errorf("Lon = %f; want 20.0", parsed.Lon)
+	}
+}

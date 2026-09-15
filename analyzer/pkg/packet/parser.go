@@ -1,6 +1,7 @@
 package packet
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -206,35 +207,57 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
 	// Standard MeshCore Advert format:
 	// If full length (>= 100 bytes): PubKey(32B), Timestamp(4B), Sig(64B), AppFlags(1B), [Lat(4B), Lon(4B)], Name(...)
-	if len(payload) >= 32 {
-		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3])) // First 3 bytes as key ID
-	} else if len(payload) >= 3 {
-		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3]))
+	if len(payload) >= 3 {
+		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3])) // 3-byte prefix (6 hex chars)
 	}
 
-	// Look for string name at the end of advert payload
-	var nameBytes []byte
-	if len(payload) >= 101 { // Full advert packet
-		// AppFlags at offset 100
-		flags := payload[100]
-		nameStart := 101
-		hasLocation := (flags & 0x10) != 0 || (flags & 0x01) != 0
-
-		if hasLocation && len(payload) >= 109 {
-			nameStart = 109
-		}
-		if nameStart < len(payload) {
-			nameBytes = payload[nameStart:]
-		}
-	} else {
-		// Short format: name after key/flags
+	if len(payload) < 101 {
+		// Short or incomplete advert payload
 		if len(payload) > 4 {
-			nameBytes = payload[4:]
+			nameStr := cleanUTF8String(payload[4:])
+			if nameStr != "" {
+				pkt.AdvertName = nameStr
+			}
 		}
+		return
 	}
 
-	if len(nameBytes) > 0 {
-		nameStr := cleanUTF8String(nameBytes)
+	appdata := payload[100:]
+	flags := appdata[0]
+	hasLocation := (flags & 0x10) != 0
+	hasFeat1 := (flags & 0x20) != 0
+	hasFeat2 := (flags & 0x40) != 0
+	hasName := (flags & 0x80) != 0
+
+	off := 1
+	if hasLocation && len(appdata) >= off+8 {
+		latRaw := int32(binary.LittleEndian.Uint32(appdata[off : off+4]))
+		lonRaw := int32(binary.LittleEndian.Uint32(appdata[off+4 : off+8]))
+		lat := float64(latRaw) / 1e6
+		lon := float64(lonRaw) / 1e6
+		if lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 {
+			pkt.Lat = lat
+			pkt.Lon = lon
+		}
+		off += 8
+	}
+
+	if hasFeat1 && len(appdata) >= off+2 {
+		off += 2
+	}
+	if hasFeat2 && len(appdata) >= off+2 {
+		off += 2
+	}
+
+	if hasName && off < len(appdata) {
+		nameEnd := len(appdata)
+		for i := off; i < len(appdata); i++ {
+			if appdata[i] == 0x00 {
+				nameEnd = i
+				break
+			}
+		}
+		nameStr := cleanUTF8String(appdata[off:nameEnd])
 		if nameStr != "" {
 			pkt.AdvertName = nameStr
 		}
