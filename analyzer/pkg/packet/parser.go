@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Payload type constants matching MeshCore standard
@@ -52,6 +53,7 @@ type ParsedPacket struct {
 	Region       string   `json:"region"`
 	Observer     string   `json:"observer"`
 	Origin       string   `json:"origin"`
+	RouteType    int      `json:"route_type"`
 	PathByteSize int      `json:"path_byte_size"`
 	PathCount    int      `json:"path_count"`
 	HopCount     int      `json:"hop_count"`
@@ -132,14 +134,32 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 
 	parsed.RawHex = strings.ToUpper(rawHex)
 
-	// Header Byte 0: payloadType = (header >> 2) & 0x0F
+	// Header Byte 0: payloadType = (header >> 2) & 0x0F, routeType = header & 0x03
 	headerByte := buf[0]
 	payloadType := (headerByte >> 2) & 0x0F
+	routeType := int(headerByte & 0x03)
+
 	parsed.PayloadType = payloadType
+	parsed.RouteType = routeType
 	parsed.TypeName = GetPayloadTypeName(payloadType)
 
-	// Header Byte 1: Path Specifier
-	pathSpec := buf[1]
+	offset := 1
+	// If TRANSPORT_FLOOD (0) or TRANSPORT_DIRECT (3), skip 4 transport code bytes
+	if routeType == 0 || routeType == 3 {
+		if len(buf) < offset+4 {
+			return nil, fmt.Errorf("packet too short for transport codes")
+		}
+		offset += 4
+	}
+
+	if offset >= len(buf) {
+		return nil, fmt.Errorf("packet too short for path byte")
+	}
+
+	// Path Specifier Byte
+	pathSpec := buf[offset]
+	offset++
+
 	pathByteSize := int((pathSpec>>6)&0x03) + 1
 	hopCount := int(pathSpec & 0x3F)
 
@@ -148,15 +168,14 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	parsed.PathCount = hopCount
 
 	hops := make([]string, 0, hopCount)
-	idx := 2
 
 	for i := 0; i < hopCount; i++ {
-		if idx+pathByteSize > len(buf) {
+		if offset+pathByteSize > len(buf) {
 			break
 		}
-		hopBytes := buf[idx : idx+pathByteSize]
+		hopBytes := buf[offset : offset+pathByteSize]
 		hops = append(hops, strings.ToUpper(hex.EncodeToString(hopBytes)))
-		idx += pathByteSize
+		offset += pathByteSize
 	}
 
 	parsed.Hops = hops
@@ -173,23 +192,57 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	}
 
 	// Parse Advert payload if PayloadType == 0x04 (ADVERT)
-	if payloadType == PayloadTypeAdvert && len(buf) > idx {
-		parseAdvertPayload(buf[idx:], parsed)
+	if payloadType == PayloadTypeAdvert && len(buf) > offset {
+		parseAdvertPayload(buf[offset:], parsed)
 	}
 
 	return parsed, nil
 }
 
 func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
-	if len(payload) >= 4 {
-		keyBytes := payload[:4]
-		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(keyBytes))
+	// Standard MeshCore Advert format:
+	// If full length (>= 100 bytes): PubKey(32B), Timestamp(4B), Sig(64B), AppFlags(1B), [Lat(4B), Lon(4B)], Name(...)
+	if len(payload) >= 32 {
+		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3])) // First 3 bytes as key ID
+	} else if len(payload) >= 3 {
+		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3]))
 	}
-	if len(payload) > 4 {
-		nameBytes := payload[4:]
-		name := strings.Trim(string(nameBytes), "\x00\r\n ")
-		if name != "" {
-			pkt.AdvertName = name
+
+	// Look for string name at the end of advert payload
+	var nameBytes []byte
+	if len(payload) >= 101 { // Full advert packet
+		// AppFlags at offset 100
+		flags := payload[100]
+		nameStart := 101
+		hasLocation := (flags & 0x10) != 0 || (flags & 0x01) != 0
+
+		if hasLocation && len(payload) >= 109 {
+			nameStart = 109
+		}
+		if nameStart < len(payload) {
+			nameBytes = payload[nameStart:]
+		}
+	} else {
+		// Short format: name after key/flags
+		if len(payload) > 4 {
+			nameBytes = payload[4:]
 		}
 	}
+
+	if len(nameBytes) > 0 {
+		nameStr := cleanUTF8String(nameBytes)
+		if nameStr != "" {
+			pkt.AdvertName = nameStr
+		}
+	}
+}
+
+func cleanUTF8String(b []byte) string {
+	// Trim trailing nulls and spaces
+	s := strings.Trim(string(b), "\x00\r\n ")
+	if !utf8.ValidString(s) {
+		// Replace invalid UTF-8 sequences
+		s = strings.ToValidUTF8(s, "")
+	}
+	return strings.TrimSpace(s)
 }

@@ -21,7 +21,7 @@ type Node struct {
 	Lat        float64  `json:"lat,omitempty"`
 	Lon        float64  `json:"lon,omitempty"`
 	Scopes     []string `json:"scopes"`     // e.g. ["KRK", "WAW"]
-	PathSizes  []int    `json:"path_sizes"` // e.g. [1, 2, 3]
+	PathSizes  []int    `json:"path_sizes"` // e.g. [2, 3]
 }
 
 type Edge struct {
@@ -140,20 +140,24 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 	}
 	pkt.ResolvedHops = resolvedHops
 
-	// 2. Insert/Update Nodes for each hop & Advert
 	now := time.Now().UTC().Format(time.RFC3339)
-	for i, hopID := range resolvedHops {
-		s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, now)
-		if i > 0 {
-			s.upsertEdgeLocked(resolvedHops[i-1], hopID, now)
+
+	// 2. Insert/Update Nodes & Edges for topology graph
+	// Rule: Exclude 1-byte path nodes from topology graph as requested by user
+	if pkt.PathByteSize >= 2 {
+		for i, hopID := range resolvedHops {
+			s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, now)
+			if i > 0 {
+				s.upsertEdgeLocked(resolvedHops[i-1], hopID, now)
+			}
 		}
 	}
 
-	if pkt.AdvertKey != "" {
+	if pkt.AdvertKey != "" && len(pkt.AdvertKey) >= 4 {
 		s.upsertNodeLocked(pkt.AdvertKey, pkt.AdvertName, pkt.Lat, pkt.Lon, pkt.Region, pkt.PathByteSize, now)
 	}
 
-	// 3. Insert Packet record
+	// 3. Insert Packet record in history
 	hopsJson, _ := json.Marshal(pkt.Hops)
 	resolvedHopsJson, _ := json.Marshal(pkt.ResolvedHops)
 
@@ -165,7 +169,6 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 
 func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string {
 	prefix = strings.ToUpper(prefix)
-	// If prefix is already full length (e.g. 6 chars for 3-byte prefix), return as is
 	if len(prefix) >= 6 {
 		return prefix
 	}
@@ -189,7 +192,6 @@ func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string 
 	}
 
 	if len(candidates) > 1 && len(neighbors) > 0 {
-		// Pick candidate that shares edges with neighbors
 		for _, cand := range candidates {
 			for _, neigh := range neighbors {
 				neighFull := s.resolvePrefixLocked(neigh, nil)
