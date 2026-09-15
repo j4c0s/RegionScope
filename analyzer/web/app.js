@@ -529,6 +529,70 @@
     };
 
     network = new vis.Network(container, data, options);
+
+    // Apply soft relative directional forces (North up, South down, West left, East right)
+    network.on('beforeDrawing', () => {
+      if (!topologyData || !topologyData.nodes || !network.body || !network.body.nodes) return;
+      const nodesMap = new Map();
+      topologyData.nodes.forEach(n => {
+        if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
+          nodesMap.set(n.id, n);
+        }
+      });
+
+      const gpsIds = Array.from(nodesMap.keys());
+      if (gpsIds.length < 2) return;
+
+      const bodyNodes = network.body.nodes;
+
+      for (let i = 0; i < gpsIds.length; i++) {
+        for (let j = i + 1; j < gpsIds.length; j++) {
+          const idA = gpsIds[i];
+          const idB = gpsIds[j];
+          const nodeA = bodyNodes[idA];
+          const nodeB = bodyNodes[idB];
+          const dataA = nodesMap.get(idA);
+          const dataB = nodesMap.get(idB);
+
+          if (!nodeA || !nodeB || !dataA || !dataB) continue;
+
+          // Lat diff: higher lat (North) should have smaller Y
+          const latDiff = dataA.lat - dataB.lat; // >0 if A is North of B
+          const yDiff = nodeA.y - nodeB.y;       // current y diff in canvas (y goes down)
+
+          // If A is North of B, nodeA.y should be less than nodeB.y (yDiff < 0)
+          if (latDiff > 0 && yDiff > -50) {
+            const force = Math.min((yDiff + 50) * 0.05, 5);
+            nodeA.vx -= force;
+            nodeA.vy -= force;
+            nodeB.vx += force;
+            nodeB.vy += force;
+          } else if (latDiff < 0 && yDiff < 50) {
+            const force = Math.min((50 - yDiff) * 0.05, 5);
+            nodeA.vx += force;
+            nodeA.vy += force;
+            nodeB.vx -= force;
+            nodeB.vy -= force;
+          }
+
+          // Lon diff: higher lon (East) should have larger X
+          const lonDiff = dataA.lon - dataB.lon; // >0 if A is East of B
+          const xDiff = nodeA.x - nodeB.x;       // current x diff in canvas
+
+          // If A is East of B, nodeA.x should be greater than nodeB.x (xDiff > 0)
+          if (lonDiff > 0 && xDiff < 50) {
+            const force = Math.min((50 - xDiff) * 0.05, 5);
+            nodeA.vx += force;
+            nodeB.vx -= force;
+          } else if (lonDiff < 0 && xDiff > -50) {
+            const force = Math.min((xDiff + 50) * 0.05, 5);
+            nodeA.vx -= force;
+            nodeB.vx += force;
+          }
+        }
+      }
+    });
+
     updateVisTopology(topologyData);
 
     network.on('click', (params) => {
