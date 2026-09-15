@@ -348,24 +348,28 @@ func (s *Storage) GetTopologyGraph() (*TopologyGraph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	nodesRows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json FROM nodes")
+	nodesRows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json FROM nodes WHERE length(id) >= 6")
 	if err != nil {
 		return nil, err
 	}
 	defer nodesRows.Close()
 
 	var nodes []*Node
+	node3BMap := make(map[string]bool)
 	for nodesRows.Next() {
 		var n Node
 		var scopesJson, pathSizesJson string
 		if err := nodesRows.Scan(&n.ID, &n.Name, &n.LastSeen, &n.Lat, &n.Lon, &scopesJson, &pathSizesJson); err == nil {
-			_ = json.Unmarshal([]byte(scopesJson), &n.Scopes)
-			_ = json.Unmarshal([]byte(pathSizesJson), &n.PathSizes)
-			nodes = append(nodes, &n)
+			if len(n.ID) == 6 {
+				_ = json.Unmarshal([]byte(scopesJson), &n.Scopes)
+				_ = json.Unmarshal([]byte(pathSizesJson), &n.PathSizes)
+				nodes = append(nodes, &n)
+				node3BMap[n.ID] = true
+			}
 		}
 	}
 
-	edgesRows, err := s.db.Query("SELECT source, target, last_seen, traffic_count FROM edges")
+	edgesRows, err := s.db.Query("SELECT source, target, last_seen, traffic_count FROM edges WHERE length(source) >= 6 AND length(target) >= 6")
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +379,9 @@ func (s *Storage) GetTopologyGraph() (*TopologyGraph, error) {
 	for edgesRows.Next() {
 		var e Edge
 		if err := edgesRows.Scan(&e.Source, &e.Target, &e.LastSeen, &e.TrafficCount); err == nil {
-			edges = append(edges, &e)
+			if node3BMap[e.Source] && node3BMap[e.Target] {
+				edges = append(edges, &e)
+			}
 		}
 	}
 
