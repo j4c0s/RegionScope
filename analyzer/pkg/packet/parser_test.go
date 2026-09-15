@@ -110,3 +110,36 @@ func TestParseMeshCorePacket_JsonPayload(t *testing.T) {
 		t.Errorf("Hops mismatch: %v", parsed.Hops)
 	}
 }
+
+func TestParseMeshCorePacket_AdvertGPS(t *testing.T) {
+	rawHex := "110692B35DCE3B83368F8C21DFE32AA180E4C6FB75B113402D23D6FECF367456B1B4843F0EF33CD630D44B664AA86CFA085F2FA4011377332DCA8FC7CE9619BE109D37E9FD08F9EE0C7133FC3A988CB3F68411F79A52E5BC1A60571A9883CB6A34C9376A65762BDCF75B40089220561903254B42015750492D536965727A63686F772D525054"
+
+	topic := "meshcore/POZ/PKN-BASE-GL1/packets"
+	parsed, err := ParseMeshCorePacket(topic, []byte(rawHex))
+	if err != nil {
+		t.Fatalf("ParseMeshCorePacket returned error: %v", err)
+	}
+
+	if parsed.PayloadType != PayloadTypeAdvert {
+		t.Errorf("PayloadType = %d; want %d (ADVERT)", parsed.PayloadType, PayloadTypeAdvert)
+	}
+	if parsed.PathByteSize != 1 {
+		t.Errorf("PathByteSize = %d; want 1", parsed.PathByteSize)
+	}
+	if parsed.AdvertKey != "36" {
+		t.Errorf("AdvertKey = %s; want 36", parsed.AdvertKey)
+	}
+	if parsed.AdvertKeyFull != "368F8C21DFE32AA180E4C6FB75B113402D23D6FECF367456B1B4843F0EF33CD6" {
+		t.Errorf("AdvertKeyFull = %s; want 368F8C21DFE32AA180E4C6FB75B113402D23D6FECF367456B1B4843F0EF33CD6", parsed.AdvertKeyFull)
+	}
+	if parsed.AdvertName != "WPI-Sierzchow-RPT" {
+		t.Errorf("AdvertName = %s; want WPI-Sierzchow-RPT", parsed.AdvertName)
+	}
+	// Lat: 51.992096, Lon: 21.121829
+	if parsed.Lat < 51.9920 || parsed.Lat > 51.9922 {
+		t.Errorf("Lat = %f; want ~51.992096", parsed.Lat)
+	}
+	if parsed.Lon < 21.1218 || parsed.Lon > 21.1219 {
+		t.Errorf("Lon = %f; want ~21.121829", parsed.Lon)
+	}
+}

@@ -21,7 +21,8 @@ type Node struct {
 	Lat        float64  `json:"lat,omitempty"`
 	Lon        float64  `json:"lon,omitempty"`
 	Scopes     []string `json:"scopes"`     // e.g. ["KRK", "WAW"]
-	PathSizes  []int    `json:"path_sizes"` // e.g. [2, 3]
+	PathSizes  []int    `json:"path_sizes"` // e.g. [1, 2, 3]
+	IsObserver bool     `json:"is_observer,omitempty"`
 }
 
 type Edge struct {
@@ -65,7 +66,8 @@ func (s *Storage) initSchema() error {
 		lat REAL DEFAULT 0,
 		lon REAL DEFAULT 0,
 		scopes_json TEXT DEFAULT '[]',
-		path_sizes_json TEXT DEFAULT '[]'
+		path_sizes_json TEXT DEFAULT '[]',
+		is_observer INTEGER DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS edges (
@@ -126,39 +128,45 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := time.Now().UTC().Format(time.RFC3339)
+
 	// 1. Resolve Hops prefixes using known nodes and topology adjacency
 	resolvedHops := make([]string, len(pkt.Hops))
 	for i, hop := range pkt.Hops {
 		var neighbors []string
-		if i > 0 {
-			neighbors = append(neighbors, pkt.Hops[i-1])
-		}
-		if i < len(pkt.Hops)-1 {
-			neighbors = append(neighbors, pkt.Hops[i+1])
+		for j, h := range pkt.Hops {
+			if i != j {
+				neighbors = append(neighbors, h)
+			}
 		}
 		resolvedHops[i] = s.resolvePrefixLocked(hop, neighbors)
 	}
 	pkt.ResolvedHops = resolvedHops
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	// 2. Insert/Update Observer Node
+	if pkt.Observer != "" {
+		s.upsertNodeLocked(pkt.Observer, pkt.Observer, 0, 0, pkt.Region, pkt.PathByteSize, true, now)
+	}
 
-	// 2. Insert/Update Nodes & Edges for topology graph
-	// Rule: Exclude 1-byte path nodes from topology graph as requested by user
-	if pkt.PathByteSize >= 2 {
-		for i, hopID := range resolvedHops {
-			s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, now)
-			if i > 0 {
-				s.upsertEdgeLocked(resolvedHops[i-1], hopID, now)
-			}
+	// 3. Insert/Update Hop Nodes & Edges for topology graph
+	for i, hopID := range resolvedHops {
+		s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, false, now)
+		if i > 0 {
+			s.upsertEdgeLocked(resolvedHops[i-1], hopID, now)
 		}
 	}
 
-	if pkt.AdvertKey != "" && len(pkt.AdvertKey) >= 4 {
-		s.upsertNodeLocked(pkt.AdvertKey, pkt.AdvertName, pkt.Lat, pkt.Lon, pkt.Region, pkt.PathByteSize, now)
+	// Link last hop in resolved path to Observer
+	if len(resolvedHops) > 0 && pkt.Observer != "" {
+		s.upsertEdgeLocked(resolvedHops[len(resolvedHops)-1], pkt.Observer, now)
+	}
 
-		// Link Advert node to the path hops/repeater network
+	// 4. Link Advert Node if present
+	if pkt.AdvertKey != "" {
+		s.upsertNodeLocked(pkt.AdvertKey, pkt.AdvertName, pkt.Lat, pkt.Lon, pkt.Region, pkt.PathByteSize, false, now)
+
+		// Connect Advert node to the first hop that forwarded it
 		if len(resolvedHops) > 0 {
-			// Link Advert to the first hop that forwarded it
 			s.upsertEdgeLocked(pkt.AdvertKey, resolvedHops[0], now)
 		} else if pkt.Observer != "" {
 			// If received direct by observer with no hops
@@ -166,7 +174,7 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 		}
 	}
 
-	// 3. Insert Packet record in history
+	// 5. Insert Packet record in history
 	hopsJson, _ := json.Marshal(pkt.Hops)
 	resolvedHopsJson, _ := json.Marshal(pkt.ResolvedHops)
 
@@ -176,13 +184,53 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 	`, pkt.Timestamp, pkt.Region, pkt.Observer, pkt.Origin, pkt.PayloadType, pkt.TypeName, pkt.PathByteSize, string(hopsJson), string(resolvedHopsJson), pkt.Hash, pkt.RawHex)
 }
 
+func (s *Storage) countCommonNeighborsLocked(candID string, neighbors []string) int {
+	if len(neighbors) == 0 {
+		return 0
+	}
+	rows, err := s.db.Query(`
+		SELECT target FROM edges WHERE source = ?
+		UNION
+		SELECT source FROM edges WHERE target = ?
+	`, candID, candID)
+	if err != nil {
+		return 0
+	}
+	defer rows.Close()
+
+	candNeighbors := make(map[string]bool)
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err == nil {
+			candNeighbors[strings.ToUpper(n)] = true
+		}
+	}
+
+	matchCount := 0
+	for _, neigh := range neighbors {
+		neighUpper := strings.ToUpper(neigh)
+		matched := false
+		for cn := range candNeighbors {
+			if cn == neighUpper || strings.HasPrefix(cn, neighUpper) || strings.HasPrefix(neighUpper, cn) {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			matchCount++
+		}
+	}
+	return matchCount
+}
+
 func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string {
 	prefix = strings.ToUpper(prefix)
 	if len(prefix) >= 6 {
 		return prefix
 	}
 
-	rows, err := s.db.Query("SELECT id FROM nodes WHERE id LIKE ?", prefix+"%")
+	// Select existing node candidates starting with prefix, ordered by length descending (e.g. 6-char 3B first)
+	rows, err := s.db.Query("SELECT id FROM nodes WHERE id LIKE ? ORDER BY length(id) DESC", prefix+"%")
 	if err != nil {
 		return prefix
 	}
@@ -196,35 +244,42 @@ func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string 
 		}
 	}
 
-	if len(candidates) == 1 {
-		return candidates[0]
+	if len(candidates) == 0 {
+		return prefix
 	}
 
-	if len(candidates) > 1 && len(neighbors) > 0 {
+	minRequiredNeighbors := 2
+	if len(prefix) <= 2 {
+		minRequiredNeighbors = 3
+	}
+
+	// Try matching candidates by checking neighbor overlap threshold
+	if len(neighbors) > 0 {
 		for _, cand := range candidates {
-			for _, neigh := range neighbors {
-				neighFull := s.resolvePrefixLocked(neigh, nil)
-				var count int
-				_ = s.db.QueryRow("SELECT COUNT(*) FROM edges WHERE (source=? AND target=?) OR (source=? AND target=?)", cand, neighFull, neighFull, cand).Scan(&count)
-				if count > 0 {
-					return cand
-				}
+			commonCount := s.countCommonNeighborsLocked(cand, neighbors)
+			if commonCount >= minRequiredNeighbors {
+				return cand
 			}
 		}
+	}
+
+	// If single candidate exists and prefix length >= 4 (2B), resolve to it
+	if len(candidates) == 1 && len(prefix) >= 4 {
 		return candidates[0]
 	}
 
 	return prefix
 }
 
-func (s *Storage) upsertNodeLocked(id, name string, lat, lon float64, scope string, pathSize int, now string) {
+func (s *Storage) upsertNodeLocked(id, name string, lat, lon float64, scope string, pathSize int, isObserver bool, now string) {
 	id = strings.ToUpper(id)
 	if id == "" {
 		return
 	}
 
 	var existingName, scopesJson, pathSizesJson string
-	err := s.db.QueryRow("SELECT name, scopes_json, path_sizes_json FROM nodes WHERE id = ?", id).Scan(&existingName, &scopesJson, &pathSizesJson)
+	var existingObserver int
+	err := s.db.QueryRow("SELECT name, scopes_json, path_sizes_json, is_observer FROM nodes WHERE id = ?", id).Scan(&existingName, &scopesJson, &pathSizesJson, &existingObserver)
 
 	var scopes []string
 	var pathSizes []int
@@ -236,7 +291,11 @@ func (s *Storage) upsertNodeLocked(id, name string, lat, lon float64, scope stri
 	if name != "" {
 		existingName = name
 	} else if existingName == "" {
-		existingName = "Node " + id
+		if isObserver {
+			existingName = "Observer " + id
+		} else {
+			existingName = "Node " + id
+		}
 	}
 
 	if scope != "" && !containsStr(scopes, scope) {
@@ -249,17 +308,23 @@ func (s *Storage) upsertNodeLocked(id, name string, lat, lon float64, scope stri
 	newScopesJson, _ := json.Marshal(scopes)
 	newPathSizesJson, _ := json.Marshal(pathSizes)
 
+	obsVal := 0
+	if isObserver || existingObserver == 1 {
+		obsVal = 1
+	}
+
 	_, err = s.db.Exec(`
-		INSERT INTO nodes (id, name, last_seen, lat, lon, scopes_json, path_sizes_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO nodes (id, name, last_seen, lat, lon, scopes_json, path_sizes_json, is_observer)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			name = EXCLUDED.name,
+			name = CASE WHEN EXCLUDED.name != '' AND EXCLUDED.name != ('Node ' || EXCLUDED.id) THEN EXCLUDED.name ELSE nodes.name END,
 			last_seen = EXCLUDED.last_seen,
 			lat = CASE WHEN EXCLUDED.lat != 0 THEN EXCLUDED.lat ELSE nodes.lat END,
 			lon = CASE WHEN EXCLUDED.lon != 0 THEN EXCLUDED.lon ELSE nodes.lon END,
 			scopes_json = EXCLUDED.scopes_json,
-			path_sizes_json = EXCLUDED.path_sizes_json;
-	`, id, existingName, now, lat, lon, string(newScopesJson), string(newPathSizesJson))
+			path_sizes_json = EXCLUDED.path_sizes_json,
+			is_observer = CASE WHEN EXCLUDED.is_observer = 1 THEN 1 ELSE nodes.is_observer END;
+	`, id, existingName, now, lat, lon, string(newScopesJson), string(newPathSizesJson), obsVal)
 	if err != nil {
 		log.Printf("[DB] Failed to upsert node %s: %v", id, err)
 	}
@@ -288,7 +353,7 @@ func (s *Storage) GetTopologyGraph() (*TopologyGraph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	nodesRows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json FROM nodes")
+	nodesRows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json, is_observer FROM nodes")
 	if err != nil {
 		return nil, err
 	}
@@ -298,9 +363,11 @@ func (s *Storage) GetTopologyGraph() (*TopologyGraph, error) {
 	for nodesRows.Next() {
 		var n Node
 		var scopesJson, pathSizesJson string
-		if err := nodesRows.Scan(&n.ID, &n.Name, &n.LastSeen, &n.Lat, &n.Lon, &scopesJson, &pathSizesJson); err == nil {
+		var isObs int
+		if err := nodesRows.Scan(&n.ID, &n.Name, &n.LastSeen, &n.Lat, &n.Lon, &scopesJson, &pathSizesJson, &isObs); err == nil {
 			_ = json.Unmarshal([]byte(scopesJson), &n.Scopes)
 			_ = json.Unmarshal([]byte(pathSizesJson), &n.PathSizes)
+			n.IsObserver = (isObs == 1)
 			nodes = append(nodes, &n)
 		}
 	}

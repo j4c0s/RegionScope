@@ -1,6 +1,7 @@
 package packet
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -49,24 +50,25 @@ func GetPayloadTypeName(pType byte) string {
 
 // ParsedPacket represents a processed MeshCore packet.
 type ParsedPacket struct {
-	Timestamp    string   `json:"timestamp"`
-	Region       string   `json:"region"`
-	Observer     string   `json:"observer"`
-	Origin       string   `json:"origin"`
-	RouteType    int      `json:"route_type"`
-	PathByteSize int      `json:"path_byte_size"`
-	PathCount    int      `json:"path_count"`
-	HopCount     int      `json:"hop_count"`
-	Hops         []string `json:"hops"`
-	ResolvedHops []string `json:"resolved_hops"`
-	PayloadType  byte     `json:"payload_type"`
-	TypeName     string   `json:"type_name"`
-	Hash         string   `json:"hash"`
-	RawHex       string   `json:"raw_hex"`
-	AdvertName   string   `json:"advert_name,omitempty"`
-	AdvertKey    string   `json:"advert_key,omitempty"`
-	Lat          float64  `json:"lat,omitempty"`
-	Lon          float64  `json:"lon,omitempty"`
+	Timestamp     string   `json:"timestamp"`
+	Region        string   `json:"region"`
+	Observer      string   `json:"observer"`
+	Origin        string   `json:"origin"`
+	RouteType     int      `json:"route_type"`
+	PathByteSize  int      `json:"path_byte_size"`
+	PathCount     int      `json:"path_count"`
+	HopCount      int      `json:"hop_count"`
+	Hops          []string `json:"hops"`
+	ResolvedHops  []string `json:"resolved_hops"`
+	PayloadType   byte     `json:"payload_type"`
+	TypeName      string   `json:"type_name"`
+	Hash          string   `json:"hash"`
+	RawHex        string   `json:"raw_hex"`
+	AdvertName    string   `json:"advert_name,omitempty"`
+	AdvertKey     string   `json:"advert_key,omitempty"`
+	AdvertKeyFull string   `json:"advert_key_full,omitempty"`
+	Lat           float64  `json:"lat,omitempty"`
+	Lon           float64  `json:"lon,omitempty"`
 }
 
 // ParseMeshCorePacket extracts packet path byte size, payload type, repeater hops, and details from an MQTT message.
@@ -207,12 +209,22 @@ func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
 	// Standard MeshCore Advert format:
 	// If full length (>= 100 bytes): PubKey(32B), Timestamp(4B), Sig(64B), AppFlags(1B), [Lat(4B), Lon(4B)], Name(...)
 	if len(payload) >= 32 {
-		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3])) // First 3 bytes as key ID
-	} else if len(payload) >= 3 {
-		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3]))
+		pkt.AdvertKeyFull = strings.ToUpper(hex.EncodeToString(payload[:32]))
 	}
 
-	// Look for string name at the end of advert payload
+	idByteLen := pkt.PathByteSize
+	if idByteLen <= 0 {
+		idByteLen = 3
+	}
+	if idByteLen > 32 {
+		idByteLen = 32
+	}
+
+	if len(payload) >= idByteLen {
+		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:idByteLen]))
+	}
+
+	// Look for string name and GPS location at offset 100+
 	var nameBytes []byte
 	if len(payload) >= 101 { // Full advert packet
 		// AppFlags at offset 100
@@ -221,6 +233,10 @@ func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
 		hasLocation := (flags & 0x10) != 0 || (flags & 0x01) != 0
 
 		if hasLocation && len(payload) >= 109 {
+			latRaw := int32(binary.LittleEndian.Uint32(payload[101:105]))
+			lonRaw := int32(binary.LittleEndian.Uint32(payload[105:109]))
+			pkt.Lat = float64(latRaw) / 1000000.0
+			pkt.Lon = float64(lonRaw) / 1000000.0
 			nameStart = 109
 		}
 		if nameStart < len(payload) {
