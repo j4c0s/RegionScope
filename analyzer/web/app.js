@@ -50,6 +50,8 @@
       supportedPathSizes: 'Obsługiwane prefiksy ścieżki',
       supportedRegions: 'Obsługiwane Scope',
       lastSeen: 'Ostatnio widziany',
+      locationTitle: 'Lokalizacja GPS',
+      noLocation: 'Brak danych GPS',
       neighborsTitle: 'Sąsiednie Węzły (Połączenia)',
       noNeighbors: 'Brak zarejestrowanych sąsiadów',
     },
@@ -100,6 +102,8 @@
       supportedPathSizes: 'Supported Path Prefixes',
       supportedRegions: 'Supported Regions (Scope)',
       lastSeen: 'Last Seen',
+      locationTitle: 'GPS Location',
+      noLocation: 'No GPS data',
       neighborsTitle: 'Neighbor Nodes (Connections)',
       noNeighbors: 'No registered neighbors',
     }
@@ -698,6 +702,11 @@
         <div class="detail-field">
           <span class="detail-label">${t.lastSeen}:</span>
           <span class="code-font">${formatTime(node.last_seen)}</span>
+        </div>
+
+        <div class="detail-field">
+          <span class="detail-label">${t.locationTitle}:</span>
+          <span class="code-font">${(node.lat && node.lon && (node.lat !== 0 || node.lon !== 0)) ? `${node.lat.toFixed(6)}, ${node.lon.toFixed(6)}` : t.noLocation}</span>
         </div>
 
         <div class="detail-field" style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px;">
