@@ -538,13 +538,35 @@
   function updateVisTopology(topo) {
     if (!topo) return;
 
+    const gpsNodes = (topo.nodes || []).filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
+    let centerLat = 0, centerLon = 0;
+    let scale = 15000;
+
+    if (gpsNodes.length > 0) {
+      let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+      gpsNodes.forEach(n => {
+        if (n.lat < minLat) minLat = n.lat;
+        if (n.lat > maxLat) maxLat = n.lat;
+        if (n.lon < minLon) minLon = n.lon;
+        if (n.lon > maxLon) maxLon = n.lon;
+      });
+      centerLat = (minLat + maxLat) / 2;
+      centerLon = (minLon + maxLon) / 2;
+      const latSpan = maxLat - minLat;
+      const lonSpan = maxLon - minLon;
+      const maxSpan = Math.max(latSpan, lonSpan);
+      if (maxSpan > 0) {
+        scale = Math.max(10000, 600 / maxSpan);
+      }
+    }
+
     const nodeUpdates = [];
     (topo.nodes || []).forEach(n => {
       const isAdvert = n.name && !n.name.startsWith('Node ');
       const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
       const labelText = isAdvert ? `[${n.name}]\n${n.id}` : n.id;
 
-      nodeUpdates.push({
+      const nodeObj = {
         id: n.id,
         label: labelText,
         color: {
@@ -553,7 +575,14 @@
           highlight: { background: nodeColor, border: '#ffffff' }
         },
         title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nLast Seen: ${formatTime(n.last_seen)}`
-      });
+      };
+
+      if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
+        nodeObj.x = (n.lon - centerLon) * scale;
+        nodeObj.y = -(n.lat - centerLat) * scale;
+      }
+
+      nodeUpdates.push(nodeObj);
     });
 
     // Merge bidirectional edges (A -> B and B -> A) into single elastic edge with double arrows
