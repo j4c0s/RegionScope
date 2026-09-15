@@ -542,6 +542,7 @@ body {
   display: inline-block;
 }
 
+.node-observer { background-color: #ec4899; }
 .node-known { background-color: #38bdf8; }
 .node-hop { background-color: #a855f7; }
 .edge-fresh { background-color: #10b981; }

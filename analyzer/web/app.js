@@ -26,9 +26,11 @@
       emptyDesc: 'Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.',
       nodeInfoTitle: 'Informacje o Węźle',
       nodeInfoPlaceholder: 'Kliknij węzeł na mapie, aby zobaczyć jego właściwości.',
+      legendObserver: 'Obserwator (MQTT Gateway)',
       legendAdvert: 'Węzeł z Advertu',
       legendHop: 'Węzeł ze Ścieżki',
       legendFresh: '< 5 min',
+      labelGpsLocation: 'Lokalizacja GPS',
       legendStale: '> 1 godz.',
       settingsTitle: 'Ustawienia i Konfiguracja',
       groupByHash: 'Grupuj pakiety live po hashu',
@@ -76,9 +78,11 @@
       emptyDesc: 'When packets appear in the MQTT network, they will automatically be displayed here.',
       nodeInfoTitle: 'Node Information',
       nodeInfoPlaceholder: 'Click a node on the map to view its attributes.',
+      legendObserver: 'Observer (MQTT Gateway)',
       legendAdvert: 'Known Advert Node',
       legendHop: 'Hop Node',
       legendFresh: '< 5 min',
+      labelGpsLocation: 'GPS Location',
       legendStale: '> 1 hour',
       settingsTitle: 'Settings & Configuration',
       groupByHash: 'Group live packets by hash',
@@ -505,13 +509,13 @@
       physics: {
         solver: 'barnesHut',
         barnesHut: {
-          gravitationalConstant: -18000, // Very strong repulsion for loose layout
-          centralGravity: 0.02,         // Loose central gravity to let graph spread far
-          springLength: 220,           // Long elastic edge distance
-          springConstant: 0.02,
-          damping: 0.09
+          gravitationalConstant: -30000, // Strong repulsion for loose layout
+          centralGravity: 0.01,         // Loose central gravity
+          springLength: 300,            // Longer elastic edge distance
+          springConstant: 0.04,         // Elastic springs
+          damping: 0.2                  // Lower damping for lower inertia and faster movement
         },
-        maxVelocity: 100,
+        maxVelocity: 150,
         minVelocity: 0.5,
         stabilization: {
           enabled: true,
@@ -533,27 +537,97 @@
         displayNodeDetails(nodeId);
       }
     });
+
+    // Periodic Compass Relative Direction Enforcement Solver for GPS nodes
+    network.on('beforeDrawing', () => {
+      if (!topologyData || !topologyData.nodes) return;
+      const gpsNodes = topologyData.nodes.filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
+      if (gpsNodes.length < 2) return;
+
+      for (let i = 0; i < gpsNodes.length; i++) {
+        for (let j = i + 1; j < gpsNodes.length; j++) {
+          const nodeA = gpsNodes[i];
+          const nodeB = gpsNodes[j];
+          const positions = network.getPositions([nodeA.id, nodeB.id]);
+          const posA = positions[nodeA.id];
+          const posB = positions[nodeB.id];
+          if (!posA || !posB) continue;
+
+          // North check: Lat(A) > Lat(B) => A should be higher on screen (posA.y < posB.y)
+          if (nodeA.lat > nodeB.lat && posA.y >= posB.y - 20) {
+            const dy = (posA.y - posB.y) + 30;
+            network.body.nodes[nodeA.id].y -= dy * 0.08;
+            network.body.nodes[nodeB.id].y += dy * 0.08;
+          } else if (nodeA.lat < nodeB.lat && posA.y <= posB.y + 20) {
+            const dy = (posB.y - posA.y) + 30;
+            network.body.nodes[nodeA.id].y += dy * 0.08;
+            network.body.nodes[nodeB.id].y -= dy * 0.08;
+          }
+
+          // West check: Lon(A) < Lon(B) => A should be left on screen (posA.x < posB.x)
+          if (nodeA.lon < nodeB.lon && posA.x >= posB.x - 20) {
+            const dx = (posA.x - posB.x) + 30;
+            network.body.nodes[nodeA.id].x -= dx * 0.08;
+            network.body.nodes[nodeB.id].x += dx * 0.08;
+          } else if (nodeA.lon > nodeB.lon && posA.x <= posB.x + 20) {
+            const dx = (posB.x - posA.x) + 30;
+            network.body.nodes[nodeA.id].x += dx * 0.08;
+            network.body.nodes[nodeB.id].x -= dx * 0.08;
+          }
+        }
+      }
+    });
   }
 
   function updateVisTopology(topo) {
     if (!topo) return;
 
+    // Calculate center for GPS nodes scaling
+    const gpsNodes = (topo.nodes || []).filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
+    let centerLat = 0, centerLon = 0;
+    if (gpsNodes.length > 0) {
+      let sumLat = 0, sumLon = 0;
+      gpsNodes.forEach(n => { sumLat += n.lat; sumLon += n.lon; });
+      centerLat = sumLat / gpsNodes.length;
+      centerLon = sumLon / gpsNodes.length;
+    }
+
     const nodeUpdates = [];
     (topo.nodes || []).forEach(n => {
-      const isAdvert = n.name && !n.name.startsWith('Node ');
-      const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
-      const labelText = isAdvert ? `[${n.name}]\n${n.id}` : n.id;
+      const isObserver = n.is_observer || (n.name && n.name.startsWith('Observer '));
+      const isAdvert = n.name && !n.name.startsWith('Node ') && !isObserver;
 
-      nodeUpdates.push({
+      let nodeColor = '#a855f7';
+      let bgColor = 'rgba(168, 85, 247, 0.25)';
+      let labelText = n.id;
+
+      if (isObserver) {
+        nodeColor = '#ec4899'; // Pink for Observer
+        bgColor = 'rgba(236, 72, 153, 0.3)';
+        labelText = `📡 ${n.name || n.id}`;
+      } else if (isAdvert) {
+        nodeColor = '#38bdf8'; // Blue for Advert
+        bgColor = 'rgba(56, 189, 248, 0.25)';
+        labelText = `[${n.name}]\n${n.id}`;
+      }
+
+      const nodeObj = {
         id: n.id,
         label: labelText,
         color: {
-          background: isAdvert ? 'rgba(56, 189, 248, 0.25)' : 'rgba(168, 85, 247, 0.25)',
+          background: bgColor,
           border: nodeColor,
           highlight: { background: nodeColor, border: '#ffffff' }
         },
-        title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nLast Seen: ${formatTime(n.last_seen)}`
-      });
+        title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nType: ${isObserver ? 'Observer Gateway' : (isAdvert ? 'Known Advert Node' : 'Hop Repeater')}\nLast Seen: ${formatTime(n.last_seen)}`
+      };
+
+      if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
+        nodeObj.x = (n.lon - centerLon) * 12000;
+        nodeObj.y = -(n.lat - centerLat) * 12000; // Higher Lat -> smaller Y (Up)
+      }
+
+      nodeUpdates.push(nodeObj);
     });
 
     // Merge bidirectional edges (A -> B and B -> A) into single elastic edge with double arrows
@@ -651,10 +725,30 @@
       neighborsHtml = `<p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${t.noNeighbors}</p>`;
     }
 
+    const isObserver = node.is_observer || (node.name && node.name.startsWith('Observer '));
+
+    let gpsHtml = '';
+    if (node.lat && node.lon && (node.lat !== 0 || node.lon !== 0)) {
+      gpsHtml = `
+        <div class="detail-field">
+          <span class="detail-label">${t.labelGpsLocation}:</span>
+          <span class="code-font" style="color:var(--accent-green);">${node.lat.toFixed(6)}°, ${node.lon.toFixed(6)}°</span>
+        </div>
+      `;
+    }
+
+    let typeTag = '';
+    if (isObserver) {
+      typeTag = `<span class="badge-type" style="background-color:rgba(236,72,153,0.2);color:#ec4899;border:1px solid rgba(236,72,153,0.4);margin-bottom:6px;">📡 Observer Gateway</span>`;
+    }
+
     nodeInfoBox.innerHTML = `
       <div class="node-detail-card">
+        ${typeTag}
         <h4 class="code-font" style="color:var(--accent-blue);">${escapeHtml(node.id)}</h4>
         <p style="font-weight: 600; font-size: 15px; margin-bottom: 8px;">${escapeHtml(node.name || 'Unknown Repeater')}</p>
+
+        ${gpsHtml}
 
         <div class="detail-field">
           <span class="detail-label">${t.supportedPathSizes}:</span>
