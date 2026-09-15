@@ -478,36 +478,39 @@
     const options = {
       nodes: {
         shape: 'dot',
-        size: 16,
+        size: 18,
         font: {
           color: '#f8fafc',
-          size: 12,
+          size: 13,
           face: 'Inter, sans-serif'
         },
         borderWidth: 2,
         shadow: true
       },
       edges: {
-        arrows: {
-          to: { enabled: true, scaleFactor: 0.8 }
-        },
         smooth: {
           type: 'continuous'
         }
       },
       physics: {
+        solver: 'barnesHut',
         barnesHut: {
-          gravitationalConstant: -3000,
-          centralGravity: 0.3,
-          springLength: 95,
-          springConstant: 0.04
+          gravitationalConstant: -8000, // Stronger node repulsion
+          centralGravity: 0.1,         // Faster expansion outwards
+          springLength: 120,           // Elastic edge distance
+          springConstant: 0.05,
+          damping: 0.09
         },
-        maxVelocity: 50,
-        minVelocity: 0.1
+        maxVelocity: 100,
+        minVelocity: 0.5,
+        stabilization: {
+          enabled: true,
+          iterations: 150
+        }
       },
       interaction: {
         hover: true,
-        tooltipDelay: 200
+        tooltipDelay: 150
       }
     };
 
@@ -525,8 +528,6 @@
     if (!topo) return;
 
     const nodeUpdates = [];
-    const edgeUpdates = [];
-
     (topo.nodes || []).forEach(n => {
       const isAdvert = n.name && !n.name.startsWith('Node ');
       const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
@@ -536,7 +537,7 @@
         id: n.id,
         label: labelText,
         color: {
-          background: isAdvert ? 'rgba(56, 189, 248, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+          background: isAdvert ? 'rgba(56, 189, 248, 0.25)' : 'rgba(168, 85, 247, 0.25)',
           border: nodeColor,
           highlight: { background: nodeColor, border: '#ffffff' }
         },
@@ -544,19 +545,49 @@
       });
     });
 
+    // Merge bidirectional edges (A -> B and B -> A) into single elastic edge with double arrows
+    const edgeMap = new Map();
     (topo.edges || []).forEach(e => {
-      const edgeId = `${e.source}->${e.target}`;
-      const width = Math.min(1 + Math.log2(e.traffic_count || 1), 6);
+      if (!e.source || !e.target) return;
+      const sortedPair = [e.source, e.target].sort().join('<->');
+
+      if (edgeMap.has(sortedPair)) {
+        const existing = edgeMap.get(sortedPair);
+        existing.traffic += e.traffic_count;
+        existing.isBidirectional = true;
+        if (e.last_seen > existing.last_seen) {
+          existing.last_seen = e.last_seen;
+        }
+      } else {
+        edgeMap.set(sortedPair, {
+          id: sortedPair,
+          source: e.source,
+          target: e.target,
+          traffic: e.traffic_count,
+          last_seen: e.last_seen,
+          isBidirectional: false
+        });
+      }
+    });
+
+    const edgeUpdates = [];
+    edgeMap.forEach(e => {
+      const width = Math.min(1.5 + Math.log2(e.traffic || 1), 7);
       const isFresh = isEdgeFresh(e.last_seen);
       const color = isFresh ? '#10b981' : '#64748b';
 
+      const arrowsObj = e.isBidirectional
+        ? { to: { enabled: true, scaleFactor: 0.8 }, from: { enabled: true, scaleFactor: 0.8 } }
+        : { to: { enabled: true, scaleFactor: 0.8 } };
+
       edgeUpdates.push({
-        id: edgeId,
+        id: e.id,
         from: e.source,
         to: e.target,
+        arrows: arrowsObj,
         width: width,
         color: { color: color, highlight: '#38bdf8' },
-        title: `Relacja: ${e.source} → ${e.target}\nPakiety: ${e.traffic_count}\nOstatnia aktywność: ${formatTime(e.last_seen)}`
+        title: `Relacja: ${e.source} ${e.isBidirectional ? '↔' : '→'} ${e.target}\nPakiety: ${e.traffic}\nOstatnia aktywność: ${formatTime(e.last_seen)}`
       });
     });
 
@@ -569,13 +600,13 @@
     const hops = pkt.resolved_hops;
 
     for (let i = 0; i < hops.length - 1; i++) {
-      const edgeId = `${hops[i]}->${hops[i+1]}`;
-      const edge = visEdges.get(edgeId);
+      const sortedPair = [hops[i], hops[i+1]].sort().join('<->');
+      const edge = visEdges.get(sortedPair);
       if (edge) {
-        visEdges.update({ id: edgeId, color: { color: '#f59e0b' }, width: (edge.width || 2) + 2 });
+        visEdges.update({ id: sortedPair, color: { color: '#f59e0b' }, width: (edge.width || 2) + 2 });
         setTimeout(() => {
-          if (visEdges.get(edgeId)) {
-            visEdges.update({ id: edgeId, color: { color: edge.color.color }, width: edge.width });
+          if (visEdges.get(sortedPair)) {
+            visEdges.update({ id: sortedPair, color: { color: edge.color.color }, width: edge.width });
           }
         }, 1500);
       }
@@ -587,7 +618,7 @@
     const node = (topologyData.nodes || []).find(n => n.id === nodeId);
     if (!node) return;
 
-    const pathSizesText = (node.path_sizes || [1]).map(s => `${s}-byte`).join(', ');
+    const pathSizesText = (node.path_sizes || [2]).map(s => `${s}-byte`).join(', ');
     const scopesText = (node.scopes || []).join(', ') || 'Global / MESH';
 
     nodeInfoBox.innerHTML = `
@@ -597,7 +628,7 @@
 
         <div class="detail-field">
           <span class="detail-label">${t.supportedPathSizes}:</span>
-          <span class="badge-path-1">${escapeHtml(pathSizesText)}</span>
+          <span class="badge-path-2">${escapeHtml(pathSizesText)}</span>
         </div>
 
         <div class="detail-field">
