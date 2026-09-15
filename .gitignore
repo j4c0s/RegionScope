@@ -27,6 +27,9 @@ replacements.txt
 reps.txt
 cmd/server/server.exe
 cmd/ingestor/ingestor.exe
+analyzer/server
+analyzer/server.exe
+analyzer/server.log
 # CI trigger
 !test-fixtures/e2e-fixture.db
 corescope-server

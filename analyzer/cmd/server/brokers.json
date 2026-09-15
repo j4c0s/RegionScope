@@ -1,0 +1,9 @@
+[
+  {
+    "id": "bc1d87c8",
+    "broker": "tcp://mqtt.example.com:1883",
+    "topic": "meshcore/#",
+    "enabled": true,
+    "status": "connecting"
+  }
+]
