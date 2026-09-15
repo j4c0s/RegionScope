@@ -149,16 +149,12 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 	pkt.ResolvedHops = resolvedHops
 
 	// 2. Insert/Update Nodes & Edges for topology graph
-	// Include 2B/3B nodes, and 1B nodes if resolved to 3B (len == 6)
+	// Include ALL nodes (1B, 2B, 3B) in the topology map
 	for i, hopID := range resolvedHops {
-		if pkt.PathByteSize >= 2 || len(hopID) >= 6 {
-			s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, now)
-			if i > 0 {
-				prevID := resolvedHops[i-1]
-				if pkt.PathByteSize >= 2 || len(prevID) >= 6 {
-					s.upsertEdgeLocked(prevID, hopID, now)
-				}
-			}
+		s.upsertNodeLocked(hopID, "", 0, 0, pkt.Region, pkt.PathByteSize, now)
+		if i > 0 {
+			prevID := resolvedHops[i-1]
+			s.upsertEdgeLocked(prevID, hopID, now)
 		}
 	}
 
@@ -167,9 +163,7 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 		s.upsertNodeLocked(pkt.Observer, pkt.Observer, 0, 0, pkt.Region, 0, now)
 		if len(resolvedHops) > 0 {
 			lastHop := resolvedHops[len(resolvedHops)-1]
-			if pkt.PathByteSize >= 2 || len(lastHop) >= 6 {
-				s.upsertEdgeLocked(lastHop, pkt.Observer, now)
-			}
+			s.upsertEdgeLocked(lastHop, pkt.Observer, now)
 		}
 	}
 
@@ -179,9 +173,7 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 
 		if len(resolvedHops) > 0 {
 			firstHop := resolvedHops[0]
-			if pkt.PathByteSize >= 2 || len(firstHop) >= 6 {
-				s.upsertEdgeLocked(pkt.AdvertKey, firstHop, now)
-			}
+			s.upsertEdgeLocked(pkt.AdvertKey, firstHop, now)
 		} else if pkt.Observer != "" {
 			s.upsertEdgeLocked(pkt.AdvertKey, pkt.Observer, now)
 		}
@@ -221,19 +213,17 @@ func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string 
 		return prefix
 	}
 
-	// Thresholds:
+	// If there's uniquely one 3B candidate matching this 1B or 2B prefix, merge directly
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	// Thresholds for multiple candidates:
 	// 2B (len == 4): >= 2 matching neighbors
 	// 1B (len == 2): >= 3 matching neighbors
 	minRequired := 2
 	if len(prefix) <= 2 {
 		minRequired = 3
-	}
-
-	if len(neighbors) == 0 {
-		if len(candidates) == 1 && len(prefix) >= 4 {
-			return candidates[0]
-		}
-		return prefix
 	}
 
 	bestCand := ""
@@ -261,10 +251,6 @@ func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string 
 
 	if bestCand != "" {
 		return bestCand
-	}
-
-	if len(prefix) >= 4 && len(candidates) == 1 {
-		return candidates[0]
 	}
 
 	return prefix

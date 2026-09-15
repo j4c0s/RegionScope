@@ -648,6 +648,8 @@
       if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
         nodeObj.x = (n.lon - centerLon) * scale;
         nodeObj.y = -(n.lat - centerLat) * scale;
+        nodeObj.fixed = { x: true, y: true };
+        nodeObj.physics = false;
       }
 
       nodeUpdates.push(nodeObj);

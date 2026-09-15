@@ -54,3 +54,34 @@ func TestStoragePrefixNeighborMatching(t *testing.T) {
 		t.Errorf("Expected 1B prefix '67' to resolve to '671AC0' with 3 matching neighbors, got '%s'", pkt1B.ResolvedHops[1])
 	}
 }
+
+func TestStorageSequencePathMerging(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	store, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Seed 3B nodes 6EFA10 and 5C1A20 into database
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"6EFA10", "5C1A20"},
+	})
+
+	// 2. Process 1B path packet with sequence "6E" -> "5C"
+	pkt1BSeq := &packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"6E", "5C"},
+	}
+	store.RecordPacket(pkt1BSeq)
+
+	if pkt1BSeq.ResolvedHops[0] != "6EFA10" {
+		t.Errorf("Expected 1B prefix '6E' to resolve to '6EFA10', got '%s'", pkt1BSeq.ResolvedHops[0])
+	}
+	if pkt1BSeq.ResolvedHops[1] != "5C1A20" {
+		t.Errorf("Expected 1B prefix '5C' to resolve to '5C1A20', got '%s'", pkt1BSeq.ResolvedHops[1])
+	}
+}
