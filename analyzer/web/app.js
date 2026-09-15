@@ -13,7 +13,7 @@
       settings: 'Ustawienia',
       colTime: 'Czas',
       colType: 'Typ Pakietu',
-      colRegion: 'Region',
+      colRegion: 'Scope',
       colOrigin: 'Obserwator / Nadawca',
       colPathLen: 'Długość ścieżki',
       colHops: 'Repeatery w Ścieżce',
@@ -48,8 +48,10 @@
       btnRemove: 'Usuń',
       confirmClear: 'Czy na pewno chcesz usunąć wszystkie dane z bazy danych?',
       supportedPathSizes: 'Obsługiwane prefiksy ścieżki',
-      supportedRegions: 'Obsługiwane regiony (Scope)',
+      supportedRegions: 'Obsługiwane Scope',
       lastSeen: 'Ostatnio widziany',
+      neighborsTitle: 'Sąsiednie Węzły (Połączenia)',
+      noNeighbors: 'Brak zarejestrowanych sąsiadów',
     },
     en: {
       subtitle: 'MQTT Listening & Topology Mapping',
@@ -98,6 +100,8 @@
       supportedPathSizes: 'Supported Path Prefixes',
       supportedRegions: 'Supported Regions (Scope)',
       lastSeen: 'Last Seen',
+      neighborsTitle: 'Neighbor Nodes (Connections)',
+      noNeighbors: 'No registered neighbors',
     }
   };
 
@@ -160,6 +164,12 @@
       packetsView.classList.add('hidden');
       packetsView.classList.remove('active');
       initVisNetwork();
+      if (network) {
+        setTimeout(() => {
+          network.redraw();
+          network.fit();
+        }, 50);
+      }
     }
   }
 
@@ -495,10 +505,10 @@
       physics: {
         solver: 'barnesHut',
         barnesHut: {
-          gravitationalConstant: -8000, // Stronger node repulsion
-          centralGravity: 0.1,         // Faster expansion outwards
-          springLength: 120,           // Elastic edge distance
-          springConstant: 0.05,
+          gravitationalConstant: -18000, // Very strong repulsion for loose layout
+          centralGravity: 0.02,         // Loose central gravity to let graph spread far
+          springLength: 220,           // Long elastic edge distance
+          springConstant: 0.02,
           damping: 0.09
         },
         maxVelocity: 100,
@@ -515,6 +525,7 @@
     };
 
     network = new vis.Network(container, data, options);
+    updateVisTopology(topologyData);
 
     network.on('click', (params) => {
       if (params.nodes.length > 0) {
@@ -621,6 +632,25 @@
     const pathSizesText = (node.path_sizes || [2]).map(s => `${s}-byte`).join(', ');
     const scopesText = (node.scopes || []).join(', ') || 'Global / MESH';
 
+    // Find all neighbor nodes connected via topology edges
+    const neighborIds = new Set();
+    (topologyData.edges || []).forEach(e => {
+      if (e.source === nodeId) neighborIds.add(e.target);
+      if (e.target === nodeId) neighborIds.add(e.source);
+    });
+
+    let neighborsHtml = '';
+    if (neighborIds.size > 0) {
+      const neighborsList = Array.from(neighborIds).map(nId => {
+        const nNode = (topologyData.nodes || []).find(n => n.id === nId);
+        const nameStr = nNode && nNode.name ? ` (${escapeHtml(nNode.name)})` : '';
+        return `<li style="margin-bottom: 4px; font-size: 13px;"><strong class="code-font" style="color:var(--accent-blue);">${escapeHtml(nId)}</strong>${nameStr}</li>`;
+      }).join('');
+      neighborsHtml = `<ul style="padding-left: 18px; margin-top: 6px; margin-bottom: 0;">${neighborsList}</ul>`;
+    } else {
+      neighborsHtml = `<p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${t.noNeighbors}</p>`;
+    }
+
     nodeInfoBox.innerHTML = `
       <div class="node-detail-card">
         <h4 class="code-font" style="color:var(--accent-blue);">${escapeHtml(node.id)}</h4>
@@ -639,6 +669,11 @@
         <div class="detail-field">
           <span class="detail-label">${t.lastSeen}:</span>
           <span class="code-font">${formatTime(node.last_seen)}</span>
+        </div>
+
+        <div class="detail-field" style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+          <span class="detail-label" style="font-weight: 600;">${t.neighborsTitle} (${neighborIds.size}):</span>
+          ${neighborsHtml}
         </div>
       </div>
     `;

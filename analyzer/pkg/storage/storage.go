@@ -155,6 +155,15 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 
 	if pkt.AdvertKey != "" && len(pkt.AdvertKey) >= 4 {
 		s.upsertNodeLocked(pkt.AdvertKey, pkt.AdvertName, pkt.Lat, pkt.Lon, pkt.Region, pkt.PathByteSize, now)
+
+		// Link Advert node to the path hops/repeater network
+		if len(resolvedHops) > 0 {
+			// Link Advert to the first hop that forwarded it
+			s.upsertEdgeLocked(pkt.AdvertKey, resolvedHops[0], now)
+		} else if pkt.Observer != "" {
+			// If received direct by observer with no hops
+			s.upsertEdgeLocked(pkt.AdvertKey, pkt.Observer, now)
+		}
 	}
 
 	// 3. Insert Packet record in history

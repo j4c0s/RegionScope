@@ -97,6 +97,7 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 			Origin   string `json:"origin"`
 			Observer string `json:"observer"`
 			Hash     string `json:"hash"`
+			Scope    string `json:"scope"`
 		}
 		if err := json.Unmarshal(rawPayload, &jsonMsg); err == nil {
 			if jsonMsg.Raw != "" {
@@ -113,6 +114,9 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 			}
 			if jsonMsg.Hash != "" {
 				jsonHash = jsonMsg.Hash
+			}
+			if jsonMsg.Scope != "" {
+				parsed.Region = jsonMsg.Scope
 			}
 		}
 	} else {
