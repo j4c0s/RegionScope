@@ -374,20 +374,18 @@ func connectMQTT(cfg *BrokerConfig) {
 		mu.Unlock()
 		broadcastBrokersStatus()
 
-		topicsMap := make(map[string]byte)
-		if cfg.Topic == "meshcore/#" || cfg.Topic == "meshcore/" {
-			topicsMap["meshcore/WRO/#"] = 0
-			topicsMap["meshcore/IEG/#"] = 0
-			topicsMap["meshcore/POZ/#"] = 0
-		} else {
-			topicsMap[cfg.Topic] = 0
+		topicToSub := cfg.Topic
+		if topicToSub == "" {
+			topicToSub = "meshcore/#"
 		}
 
-		token := c.SubscribeMultiple(topicsMap, func(client mqtt.Client, msg mqtt.Message) {
+		token := c.Subscribe(topicToSub, 0, func(client mqtt.Client, msg mqtt.Message) {
 			pkt, err := packet.ParseMeshCorePacket(msg.Topic(), msg.Payload())
 			if err != nil {
+				log.Printf("[MQTT:%s] Ignored packet on %s: %v", cfg.ID, msg.Topic(), err)
 				return
 			}
+			log.Printf("[MQTT:%s] Ingested packet on %s (Region: %s, Observer: %s)", cfg.ID, msg.Topic(), pkt.Region, pkt.Observer)
 			addAndBroadcastPacket(pkt)
 		})
 		token.Wait()
