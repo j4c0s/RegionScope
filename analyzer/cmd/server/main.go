@@ -83,7 +83,6 @@ func main() {
 	}
 
 	defaultBrokers := getEnv("MQTT_BROKERS", getEnv("MQTT_BROKER", ""))
-	defaultTopic := getEnv("MQTT_TOPIC", "meshcore/#")
 	defaultUser := getEnv("MQTT_USERNAME", "")
 	defaultPass := getEnv("MQTT_PASSWORD", "")
 	simulate := getEnv("SIMULATE", "false")
@@ -112,7 +111,10 @@ func main() {
 					b = "tcp://" + b
 				}
 				if !brokerExists(b) {
-					addBroker(b, defaultTopic, defaultUser, defaultPass, true)
+					topics := []string{"meshcore/WRO/#", "meshcore/IEG/#", "meshcore/POZ/#"}
+					for _, top := range topics {
+						addBroker(b, top, defaultUser, defaultPass, true)
+					}
 				}
 			}
 		}

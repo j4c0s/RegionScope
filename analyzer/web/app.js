@@ -112,8 +112,6 @@
   let currentLang = localStorage.getItem('mc_analyzer_lang') || 'pl';
   let isGroupedByHash = localStorage.getItem('mc_group_by_hash') === 'true';
 
-  let selectedScope = 'all';
-  let selectedObserver = 'all';
   let isGpsPinned = true;
 
   let rawPackets = [];
@@ -146,8 +144,6 @@
   const packetTableBody = document.getElementById('packetTableBody');
   const emptyState = document.getElementById('emptyState');
   const nodeInfoBox = document.getElementById('nodeInfoBox');
-  const filterScopeSelect = document.getElementById('filterScopeSelect');
-  const filterObserverSelect = document.getElementById('filterObserverSelect');
   const pinGpsToggle = document.getElementById('pinGpsToggle');
 
   groupByHashToggle.checked = isGroupedByHash;
@@ -159,20 +155,6 @@
     pinGpsToggle.checked = isGpsPinned;
     pinGpsToggle.addEventListener('change', (e) => {
       isGpsPinned = e.target.checked;
-      updateVisTopology(topologyData);
-    });
-  }
-
-  if (filterScopeSelect) {
-    filterScopeSelect.addEventListener('change', (e) => {
-      selectedScope = e.target.value;
-      updateVisTopology(topologyData);
-    });
-  }
-
-  if (filterObserverSelect) {
-    filterObserverSelect.addEventListener('change', (e) => {
-      selectedObserver = e.target.value;
       updateVisTopology(topologyData);
     });
   }
@@ -325,14 +307,12 @@
           }
           if (msg.topology) {
             topologyData = msg.topology;
-            populateFilters();
             updateVisTopology(topologyData);
           }
         } else if (msg.type === 'packet' && msg.packet) {
           handleIncomingPacket(msg.packet);
           if (msg.topology) {
             topologyData = msg.topology;
-            populateFilters();
             updateVisTopology(topologyData);
           }
         } else if (msg.type === 'brokers' && msg.brokers) {
@@ -342,7 +322,6 @@
           rawPackets = [];
           topologyData = { nodes: [], edges: [] };
           renderPackets();
-          populateFilters();
           updateVisTopology(topologyData);
         }
       } catch (err) {
@@ -688,38 +667,10 @@
   function updateVisTopology(topo) {
     if (!topo) return;
 
-    // Filter nodes by Scope and Observer
-    let filteredNodes = topo.nodes || [];
+    const allNodes = topo.nodes || [];
+    const allEdges = topo.edges || [];
 
-    if (selectedScope !== 'all') {
-      filteredNodes = filteredNodes.filter(n => {
-        if (n.scopes && n.scopes.includes(selectedScope)) return true;
-        // Check if any packet with this region touches this node
-        return rawPackets.some(p => p.region === selectedScope && (
-          p.origin === n.id || p.observer === n.id ||
-          (p.resolved_hops && p.resolved_hops.includes(n.id))
-        ));
-      });
-    }
-
-    if (selectedObserver !== 'all') {
-      filteredNodes = filteredNodes.filter(n => {
-        // Check if node is equal to selected observer or connected in packets from selected observer
-        return n.id === selectedObserver || rawPackets.some(p =>
-          (p.observer === selectedObserver || p.origin === selectedObserver) &&
-          (p.origin === n.id || p.observer === n.id || (p.resolved_hops && p.resolved_hops.includes(n.id)))
-        );
-      });
-    }
-
-    const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
-
-    // Filter edges whose endpoints are both in filteredNodes
-    let filteredEdges = (topo.edges || []).filter(e =>
-      filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target)
-    );
-
-    const gpsNodes = filteredNodes.filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
+    const gpsNodes = allNodes.filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
     let centerLat = 0, centerLon = 0;
     let scale = 15000;
 
@@ -742,7 +693,7 @@
     }
 
     const nodeUpdates = [];
-    filteredNodes.forEach(n => {
+    allNodes.forEach(n => {
       const isAdvert = n.name && !n.name.startsWith('Node ');
       const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
       const labelText = isAdvert ? `[${n.name}]\n${n.id}` : n.id;
@@ -778,7 +729,7 @@
 
     // Merge bidirectional edges (A -> B and B -> A) into single elastic edge with double arrows
     const edgeMap = new Map();
-    filteredEdges.forEach(e => {
+    allEdges.forEach(e => {
       if (!e.source || !e.target) return;
       const sortedPair = [e.source, e.target].sort().join('<->');
 
@@ -822,11 +773,17 @@
       });
     });
 
-    // Clear removed nodes/edges when filtering
-    visNodes.clear();
-    visEdges.clear();
     visNodes.update(nodeUpdates);
     visEdges.update(edgeUpdates);
+
+    if (network) {
+      if (!isGpsPinned) {
+        network.setOptions({ physics: { enabled: true } });
+        network.startSimulation();
+      } else {
+        network.stopSimulation();
+      }
+    }
   }
 
   function animatePacketPath(pkt) {
