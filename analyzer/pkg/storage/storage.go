@@ -94,7 +94,14 @@ func (s *Storage) initSchema() error {
 	);
 	`
 	_, err := s.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migrations for existing databases
+	_, _ = s.db.Exec("ALTER TABLE nodes ADD COLUMN is_observer INTEGER DEFAULT 0;")
+
+	return nil
 }
 
 func (s *Storage) Close() error {

@@ -172,3 +172,49 @@ func TestStorage_AdvertAndGPS(t *testing.T) {
 		t.Errorf("Advert node 368F not connected to first hop 92B3")
 	}
 }
+
+func TestStorage_ExistingDBMigration(t *testing.T) {
+	tmpDb := "test_legacy.db"
+	defer os.Remove(tmpDb)
+
+	// Open legacy DB and create nodes table WITHOUT is_observer column
+	legacyStore, err := InitDB(tmpDb)
+	if err != nil {
+		t.Fatalf("InitDB error: %v", err)
+	}
+	legacyStore.Close()
+
+	// Re-open DB to run migrations
+	store, err := InitDB(tmpDb)
+	if err != nil {
+		t.Fatalf("Re-opening InitDB error: %v", err)
+	}
+	defer store.Close()
+
+	// Test upserting node after migration
+	pkt := &packet.ParsedPacket{
+		Timestamp:    "2026-09-15T22:30:00Z",
+		Region:       "POZ",
+		Observer:     "OBS_LEGACY",
+		PathByteSize: 2,
+		Hops:         []string{"1122"},
+	}
+
+	store.RecordPacket(pkt)
+
+	topo, err := store.GetTopologyGraph()
+	if err != nil {
+		t.Fatalf("GetTopologyGraph error after migration: %v", err)
+	}
+
+	var foundObs bool
+	for _, n := range topo.Nodes {
+		if n.ID == "OBS_LEGACY" && n.IsObserver {
+			foundObs = true
+			break
+		}
+	}
+	if !foundObs {
+		t.Errorf("Observer OBS_LEGACY not recorded correctly after migration")
+	}
+}
