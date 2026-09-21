@@ -94,6 +94,30 @@
 
       <!-- Topology View -->
       <section id="topologyView" class="view-section hidden">
+        <div class="topology-controls-bar">
+          <div class="filter-group">
+            <label for="filterScopeSelect" data-i18n="labelFilterScope">Scope / Region:</label>
+            <select id="filterScopeSelect" class="filter-select">
+              <option value="ALL" data-i18n="optionAllScopes">Wszystkie Scope</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filterObserverSelect" data-i18n="labelFilterObserver">Obserwator:</label>
+            <select id="filterObserverSelect" class="filter-select">
+              <option value="ALL" data-i18n="optionAllObservers">Wszyscy Obserwatorzy</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="toggle-control">
+              <input type="checkbox" id="pinGpsToggle" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-label" data-i18n="labelPinGps">Przypnij nody GPS do pozycji</span>
+            </label>
+          </div>
+        </div>
+
         <div class="topology-container">
           <div class="topology-sidebar">
             <h3 data-i18n="nodeInfoTitle">Informacje o Węźle</h3>

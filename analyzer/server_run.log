@@ -1,9 +1,0 @@
-2026/09/15 00:52:45 [Analyzer] Starting MeshCore Packet Analyzer...
-2026/09/15 00:52:45 [DB] SQLite database initialized at: analyzer.db
-2026/09/15 00:52:45 [Analyzer] Serving web UI from: web
-2026/09/15 00:52:45 [Analyzer] Port 8085 busy, trying next...
-2026/09/15 00:52:45 [Analyzer] Port 8086 busy, trying next...
-2026/09/15 00:52:45 ==========================================================
-2026/09/15 00:52:45 [Analyzer] SUCCESS! Server running on PC.
-2026/09/15 00:52:45 [Analyzer] Open browser at: http://localhost:8087/
-2026/09/15 00:52:45 ==========================================================

@@ -455,11 +455,53 @@ body {
   font-size: 13px;
 }
 
+/* Topology View Controls Bar */
+.topology-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.filter-group label {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.filter-select {
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--text-main);
+  font-size: 12px;
+  outline: none;
+  font-family: var(--font-main);
+  cursor: pointer;
+}
+
+.filter-select option {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+}
+
 /* Topology View Layout */
 .topology-container {
   display: flex;
   gap: 16px;
-  height: 720px;
+  height: 670px;
 }
 
 .topology-sidebar {
