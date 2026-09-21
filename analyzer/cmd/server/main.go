@@ -111,10 +111,7 @@ func main() {
 					b = "tcp://" + b
 				}
 				if !brokerExists(b) {
-					topics := []string{"meshcore/WRO/#", "meshcore/IEG/#", "meshcore/POZ/#"}
-					for _, top := range topics {
-						addBroker(b, top, defaultUser, defaultPass, true)
-					}
+					addBroker(b, "meshcore/#", defaultUser, defaultPass, true)
 				}
 			}
 		}
@@ -359,7 +356,7 @@ func toggleBroker(id string, enabled bool) {
 }
 
 func connectMQTT(cfg *BrokerConfig) {
-	clientID := "meshcore-analyzer-" + cfg.ID
+	clientID := fmt.Sprintf("meshcore-analyzer-%s-%d", cfg.ID, time.Now().UnixNano()%100000)
 	opts := mqtt.NewClientOptions().AddBroker(cfg.Broker).SetClientID(clientID)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)

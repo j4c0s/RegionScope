@@ -225,9 +225,10 @@
             physics: false
           });
         } else {
+          // When unpinned, unfix node and let physics take over
           updates.push({
             id: n.id,
-            fixed: { x: false, y: false },
+            fixed: false,
             physics: true
           });
         }
@@ -243,6 +244,7 @@
         network.setOptions({ physics: { enabled: true } });
         network.startSimulation();
       } else {
+        network.setOptions({ physics: { enabled: false } });
         network.stopSimulation();
       }
     }
@@ -770,17 +772,17 @@
       };
 
       if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
-        nodeObj.x = (n.lon - centerLon) * scale;
-        nodeObj.y = -(n.lat - centerLat) * scale;
         if (isGpsPinned) {
+          nodeObj.x = (n.lon - centerLon) * scale;
+          nodeObj.y = -(n.lat - centerLat) * scale;
           nodeObj.fixed = { x: true, y: true };
           nodeObj.physics = false;
         } else {
-          nodeObj.fixed = { x: false, y: false };
+          nodeObj.fixed = false;
           nodeObj.physics = true;
         }
       } else {
-        nodeObj.fixed = { x: false, y: false };
+        nodeObj.fixed = false;
         nodeObj.physics = true;
       }
 

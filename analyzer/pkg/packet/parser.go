@@ -81,8 +81,13 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 
 	// 1. Extract Region / Scope and Observer ID from MQTT topic if formatted like meshcore/<REGION>/<OBSERVER>/packets
 	topicParts := strings.Split(topic, "/")
+	if len(topicParts) >= 2 {
+		pUpper := strings.ToUpper(topicParts[1])
+		if pUpper != "" && pUpper != "MESHCORE" && pUpper != "PACKETS" {
+			parsed.Region = pUpper
+		}
+	}
 	if len(topicParts) >= 3 {
-		parsed.Region = strings.ToUpper(topicParts[1])
 		parsed.Observer = topicParts[2]
 		parsed.Origin = topicParts[2]
 	}
@@ -99,6 +104,7 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 			Observer string `json:"observer"`
 			Hash     string `json:"hash"`
 			Scope    string `json:"scope"`
+			Region   string `json:"region"`
 		}
 		if err := json.Unmarshal(rawPayload, &jsonMsg); err == nil {
 			if jsonMsg.Raw != "" {
@@ -116,18 +122,15 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 			if jsonMsg.Hash != "" {
 				jsonHash = jsonMsg.Hash
 			}
-			if jsonMsg.Scope != "" {
+			// Only override parsed.Region from JSON if it's not generic ("MESH", "GLOBAL") or if topic region is default
+			if jsonMsg.Scope != "" && strings.ToUpper(jsonMsg.Scope) != "MESH" && strings.ToUpper(jsonMsg.Scope) != "GLOBAL" {
 				parsed.Region = strings.ToUpper(jsonMsg.Scope)
+			} else if jsonMsg.Region != "" && strings.ToUpper(jsonMsg.Region) != "MESH" && strings.ToUpper(jsonMsg.Region) != "GLOBAL" {
+				parsed.Region = strings.ToUpper(jsonMsg.Region)
 			}
 		}
 	} else {
 		rawHex = strings.TrimSpace(string(rawPayload))
-	}
-
-	// Validate Region: accept ONLY POZ, WRO, IEG
-	parsed.Region = strings.ToUpper(parsed.Region)
-	if parsed.Region != "POZ" && parsed.Region != "WRO" && parsed.Region != "IEG" {
-		return nil, fmt.Errorf("packet region '%s' ignored (allowed: WRO, IEG, POZ)", parsed.Region)
 	}
 
 	if rawHex == "" {
@@ -205,6 +208,31 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	// Parse Advert payload if PayloadType == 0x04 (ADVERT)
 	if payloadType == PayloadTypeAdvert && len(buf) > offset {
 		parseAdvertPayload(buf[offset:], parsed)
+	}
+
+	// Sanitize Region
+	parsed.Region = strings.ToUpper(parsed.Region)
+	if parsed.Region == "" {
+		parsed.Region = "MESH"
+	}
+
+	// Check if region can be refined from topic, origin, observer, advert name, or GPS
+	combinedInfo := strings.ToUpper(topic + " " + parsed.Origin + " " + parsed.Observer + " " + parsed.AdvertName)
+	if strings.Contains(combinedInfo, "WRO") || strings.Contains(combinedInfo, "WROC") {
+		parsed.Region = "WRO"
+	} else if strings.Contains(combinedInfo, "POZ") || strings.Contains(combinedInfo, "POZN") {
+		parsed.Region = "POZ"
+	} else if strings.Contains(combinedInfo, "IEG") || strings.Contains(combinedInfo, "ZIELONA") {
+		parsed.Region = "IEG"
+	} else if parsed.Lat != 0 && parsed.Lon != 0 {
+		// Infer region from GPS bounding box coordinates if available
+		if parsed.Lat >= 50.8 && parsed.Lat <= 51.4 && parsed.Lon >= 16.6 && parsed.Lon <= 17.4 {
+			parsed.Region = "WRO"
+		} else if parsed.Lat >= 52.1 && parsed.Lat <= 52.7 && parsed.Lon >= 16.5 && parsed.Lon <= 17.3 {
+			parsed.Region = "POZ"
+		} else if parsed.Lat >= 51.7 && parsed.Lat <= 52.2 && parsed.Lon >= 15.0 && parsed.Lon <= 15.8 {
+			parsed.Region = "IEG"
+		}
 	}
 
 	return parsed, nil
