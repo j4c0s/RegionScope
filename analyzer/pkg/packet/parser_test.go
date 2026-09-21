@@ -154,3 +154,39 @@ func TestParseMeshCorePacket_AdvertGPS(t *testing.T) {
 		t.Errorf("Lon = %f; want 20.0", parsed.Lon)
 	}
 }
+
+func TestParseMeshCorePacket_RegionFiltering(t *testing.T) {
+	// Header: 0x05 (GRP_TXT), Path: 0x02 (1-byte, 2 hops)
+	pktBytes := []byte{0x05, 0x02, 0x11, 0x22}
+	rawHex := hex.EncodeToString(pktBytes)
+
+	// WAW region packet must be dropped
+	_, errWAW := ParseMeshCorePacket("meshcore/WAW/OBSERVER1/packets", []byte(rawHex))
+	if errWAW == nil {
+		t.Errorf("expected error for WAW region packet, got nil")
+	}
+
+	// KRK region packet must be dropped
+	_, errKRK := ParseMeshCorePacket("meshcore/KRK/OBSERVER1/packets", []byte(rawHex))
+	if errKRK == nil {
+		t.Errorf("expected error for KRK region packet, got nil")
+	}
+
+	// WRO region packet must pass
+	pktWRO, errWRO := ParseMeshCorePacket("meshcore/WRO/OBSERVER1/packets", []byte(rawHex))
+	if errWRO != nil || pktWRO.Region != "WRO" {
+		t.Errorf("expected WRO region packet to pass, got err=%v, region=%s", errWRO, pktWRO.Region)
+	}
+
+	// POZ region packet must pass
+	pktPOZ, errPOZ := ParseMeshCorePacket("meshcore/POZ/OBSERVER1/packets", []byte(rawHex))
+	if errPOZ != nil || pktPOZ.Region != "POZ" {
+		t.Errorf("expected POZ region packet to pass, got err=%v, region=%s", errPOZ, pktPOZ.Region)
+	}
+
+	// IEG region packet must pass
+	pktIEG, errIEG := ParseMeshCorePacket("meshcore/IEG/OBSERVER1/packets", []byte(rawHex))
+	if errIEG != nil || pktIEG.Region != "IEG" {
+		t.Errorf("expected IEG region packet to pass, got err=%v, region=%s", errIEG, pktIEG.Region)
+	}
+}

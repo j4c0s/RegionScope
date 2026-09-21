@@ -235,6 +235,11 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		}
 	}
 
+	// Strictly accept ONLY WRO, IEG, POZ regions. Drop all other regions (e.g. WAW, KRK, RZE).
+	if parsed.Region != "WRO" && parsed.Region != "IEG" && parsed.Region != "POZ" {
+		return nil, fmt.Errorf("packet region '%s' ignored (only WRO, IEG, POZ allowed)", parsed.Region)
+	}
+
 	return parsed, nil
 }
 
