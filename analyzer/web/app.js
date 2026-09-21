@@ -155,7 +155,7 @@
     pinGpsToggle.checked = isGpsPinned;
     pinGpsToggle.addEventListener('change', (e) => {
       isGpsPinned = e.target.checked;
-      updateVisTopology(topologyData);
+      toggleGpsPinning(isGpsPinned);
     });
   }
 
@@ -184,6 +184,66 @@
           network.redraw();
           network.fit();
         }, 50);
+      }
+    }
+  }
+
+  function toggleGpsPinning(pinned) {
+    if (!topologyData || !topologyData.nodes) return;
+
+    const gpsNodes = (topologyData.nodes || []).filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
+    let centerLat = 0, centerLon = 0;
+    let scale = 15000;
+
+    if (gpsNodes.length > 0) {
+      let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+      gpsNodes.forEach(n => {
+        if (n.lat < minLat) minLat = n.lat;
+        if (n.lat > maxLat) maxLat = n.lat;
+        if (n.lon < minLon) minLon = n.lon;
+        if (n.lon > maxLon) maxLon = n.lon;
+      });
+      centerLat = (minLat + maxLat) / 2;
+      centerLon = (minLon + maxLon) / 2;
+      const latSpan = maxLat - minLat;
+      const lonSpan = maxLon - minLon;
+      const maxSpan = Math.max(latSpan, lonSpan);
+      if (maxSpan > 0) {
+        scale = Math.max(10000, 600 / maxSpan);
+      }
+    }
+
+    const updates = [];
+    (topologyData.nodes || []).forEach(n => {
+      if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
+        if (pinned) {
+          updates.push({
+            id: n.id,
+            x: (n.lon - centerLon) * scale,
+            y: -(n.lat - centerLat) * scale,
+            fixed: { x: true, y: true },
+            physics: false
+          });
+        } else {
+          updates.push({
+            id: n.id,
+            fixed: { x: false, y: false },
+            physics: true
+          });
+        }
+      }
+    });
+
+    if (updates.length > 0) {
+      visNodes.update(updates);
+    }
+
+    if (network) {
+      if (!pinned) {
+        network.setOptions({ physics: { enabled: true } });
+        network.startSimulation();
+      } else {
+        network.stopSimulation();
       }
     }
   }

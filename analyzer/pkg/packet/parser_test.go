@@ -52,7 +52,7 @@ func TestParseMeshCorePacket_PathBytes(t *testing.T) {
 			pktBytes = append(pktBytes, tt.hopsData...)
 			rawHex := hex.EncodeToString(pktBytes)
 
-			topic := "meshcore/KRK/OBSERVER1/packets"
+			topic := "meshcore/WRO/OBSERVER1/packets"
 			parsed, err := ParseMeshCorePacket(topic, []byte(rawHex))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -85,14 +85,14 @@ func TestParseMeshCorePacket_JsonPayload(t *testing.T) {
 		"hex": "054211223344"
 	}`
 
-	topic := "meshcore/KRK/033DA9E56A4570019E996EE46F47FCC91E3461364B409CF0B2E87457FD005B61/packets"
+	topic := "meshcore/POZ/033DA9E56A4570019E996EE46F47FCC91E3461364B409CF0B2E87457FD005B61/packets"
 	parsed, err := ParseMeshCorePacket(topic, []byte(jsonPayload))
 	if err != nil {
 		t.Fatalf("ParseMeshCorePacket returned error: %v", err)
 	}
 
-	if parsed.Region != "KRK" {
-		t.Errorf("Region = %s; want KRK", parsed.Region)
+	if parsed.Region != "POZ" {
+		t.Errorf("Region = %s; want POZ", parsed.Region)
 	}
 	if parsed.Observer != "033DA9E56A4570019E996EE46F47FCC91E3461364B409CF0B2E87457FD005B61" {
 		t.Errorf("Observer = %s", parsed.Observer)
@@ -136,7 +136,7 @@ func TestParseMeshCorePacket_AdvertGPS(t *testing.T) {
 
 	pktBytes = append(pktBytes, append(advertBuf, appData...)...)
 
-	parsed, err := ParseMeshCorePacket("meshcore/KRK/OBSERVER1/packets", []byte(hex.EncodeToString(pktBytes)))
+	parsed, err := ParseMeshCorePacket("meshcore/IEG/OBSERVER1/packets", []byte(hex.EncodeToString(pktBytes)))
 	if err != nil {
 		t.Fatalf("ParseMeshCorePacket failed: %v", err)
 	}

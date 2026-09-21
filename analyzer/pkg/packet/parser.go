@@ -82,7 +82,7 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	// 1. Extract Region / Scope and Observer ID from MQTT topic if formatted like meshcore/<REGION>/<OBSERVER>/packets
 	topicParts := strings.Split(topic, "/")
 	if len(topicParts) >= 3 {
-		parsed.Region = topicParts[1]
+		parsed.Region = strings.ToUpper(topicParts[1])
 		parsed.Observer = topicParts[2]
 		parsed.Origin = topicParts[2]
 	}
@@ -117,11 +117,17 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 				jsonHash = jsonMsg.Hash
 			}
 			if jsonMsg.Scope != "" {
-				parsed.Region = jsonMsg.Scope
+				parsed.Region = strings.ToUpper(jsonMsg.Scope)
 			}
 		}
 	} else {
 		rawHex = strings.TrimSpace(string(rawPayload))
+	}
+
+	// Validate Region: accept ONLY POZ, WRO, IEG
+	parsed.Region = strings.ToUpper(parsed.Region)
+	if parsed.Region != "POZ" && parsed.Region != "WRO" && parsed.Region != "IEG" {
+		return nil, fmt.Errorf("packet region '%s' ignored (allowed: WRO, IEG, POZ)", parsed.Region)
 	}
 
 	if rawHex == "" {
