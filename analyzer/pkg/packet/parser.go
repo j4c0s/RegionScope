@@ -216,40 +216,9 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		parsed.Region = "MESH"
 	}
 
-	// Combined text for keyword matching across topic, origin, observer, advert name
-	combinedInfo := strings.ToUpper(topic + " " + parsed.Origin + " " + parsed.Observer + " " + parsed.AdvertName)
-
-	// Check if region matches WRO, POZ, or IEG keywords or subregions/cities
-	if strings.Contains(combinedInfo, "WRO") || strings.Contains(combinedInfo, "WROC") ||
-		strings.Contains(combinedInfo, "LUBAŃ") || strings.Contains(combinedInfo, "LUBAN") ||
-		strings.Contains(combinedInfo, "LEGNICA") || strings.Contains(combinedInfo, "LBN") ||
-		strings.Contains(combinedInfo, "GLOGOW") || strings.Contains(combinedInfo, "GŁOGÓW") ||
-		strings.Contains(combinedInfo, "WALBRZYCH") || strings.Contains(combinedInfo, "WAŁBRZYCH") {
-		parsed.Region = "WRO"
-	} else if strings.Contains(combinedInfo, "POZ") || strings.Contains(combinedInfo, "POZN") ||
-		strings.Contains(combinedInfo, "KALISZ") || strings.Contains(combinedInfo, "LESZNO") ||
-		strings.Contains(combinedInfo, "KONIN") || strings.Contains(combinedInfo, "GNIEZNO") ||
-		strings.Contains(combinedInfo, "CHOTOMOW") || strings.Contains(combinedInfo, "CHOTOMÓW") {
-		parsed.Region = "POZ"
-	} else if strings.Contains(combinedInfo, "IEG") || strings.Contains(combinedInfo, "ZIELONA") ||
-		strings.Contains(combinedInfo, "GORZOW") || strings.Contains(combinedInfo, "GORZÓW") ||
-		strings.Contains(combinedInfo, "NOWA SOL") || strings.Contains(combinedInfo, "NOWA SÓL") ||
-		strings.Contains(combinedInfo, "ZARY") || strings.Contains(combinedInfo, "ŻARY") {
-		parsed.Region = "IEG"
-	} else if parsed.Lat != 0 && parsed.Lon != 0 {
-		// Infer region from GPS bounding box coordinates for Dolnośląskie (WRO), Wielkopolskie (POZ), Lubuskie (IEG)
-		if parsed.Lat >= 50.0 && parsed.Lat <= 51.8 && parsed.Lon >= 14.8 && parsed.Lon <= 17.8 {
-			parsed.Region = "WRO"
-		} else if parsed.Lat >= 51.4 && parsed.Lat <= 53.2 && parsed.Lon >= 15.8 && parsed.Lon <= 19.0 {
-			parsed.Region = "POZ"
-		} else if parsed.Lat >= 51.3 && parsed.Lat <= 53.1 && parsed.Lon >= 14.4 && parsed.Lon <= 16.4 {
-			parsed.Region = "IEG"
-		}
-	}
-
 	// Strictly accept ONLY WRO, IEG, POZ regions. Drop all other regions.
 	if parsed.Region != "WRO" && parsed.Region != "IEG" && parsed.Region != "POZ" {
-		return nil, fmt.Errorf("packet region '%s' ignored (combined info: '%s')", parsed.Region, combinedInfo)
+		return nil, fmt.Errorf("packet region '%s' ignored (allowed: WRO, IEG, POZ)", parsed.Region)
 	}
 
 	return parsed, nil
