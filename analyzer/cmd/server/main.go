@@ -374,19 +374,30 @@ func connectMQTT(cfg *BrokerConfig) {
 		mu.Unlock()
 		broadcastBrokersStatus()
 
-		topicsMap := make(map[string]byte)
-		if cfg.Topic == "meshcore/#" || cfg.Topic == "" || cfg.Topic == "meshcore/" {
-			topicsMap["meshcore/WRO/#"] = 0
-			topicsMap["meshcore/IEG/#"] = 0
-			topicsMap["meshcore/POZ/#"] = 0
-		} else {
-			topicsMap[cfg.Topic] = 0
+		topicToSub := cfg.Topic
+		if topicToSub == "" {
+			topicToSub = "meshcore/#"
+		}
+
+		topicsMap := map[string]byte{
+			topicToSub: 0,
 		}
 
 		token := c.SubscribeMultiple(topicsMap, func(client mqtt.Client, msg mqtt.Message) {
+			// Don't flood log with /status topics if they don't contain raw packet hex
+			if strings.HasSuffix(msg.Topic(), "/status") {
+				pkt, err := packet.ParseMeshCorePacket(msg.Topic(), msg.Payload())
+				if err != nil {
+					return
+				}
+				log.Printf("[MQTT:%s] Ingested packet on %s (Region: %s, Observer: %s)", cfg.ID, msg.Topic(), pkt.Region, pkt.Observer)
+				addAndBroadcastPacket(pkt)
+				return
+			}
+
 			pkt, err := packet.ParseMeshCorePacket(msg.Topic(), msg.Payload())
 			if err != nil {
-				log.Printf("[MQTT:%s] Ignored packet on %s: %v", cfg.ID, msg.Topic(), err)
+				log.Printf("[MQTT:%s] Ignored message on %s: %v", cfg.ID, msg.Topic(), err)
 				return
 			}
 			log.Printf("[MQTT:%s] Ingested packet on %s (Region: %s, Observer: %s)", cfg.ID, msg.Topic(), pkt.Region, pkt.Observer)

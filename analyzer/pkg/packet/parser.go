@@ -95,42 +95,50 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	// 2. Extract Raw Hex String
 	var rawHex string
 	var jsonHash string
-	if len(rawPayload) > 0 && rawPayload[0] == '{' {
-		var jsonMsg struct {
-			Raw      string `json:"raw"`
-			Hex      string `json:"hex"`
-			Payload  string `json:"payload"`
-			Origin   string `json:"origin"`
-			Observer string `json:"observer"`
-			Hash     string `json:"hash"`
-			Scope    string `json:"scope"`
-			Region   string `json:"region"`
-		}
-		if err := json.Unmarshal(rawPayload, &jsonMsg); err == nil {
-			if jsonMsg.Raw != "" {
-				rawHex = jsonMsg.Raw
-			} else if jsonMsg.Hex != "" {
-				rawHex = jsonMsg.Hex
-			} else if jsonMsg.Payload != "" {
-				rawHex = jsonMsg.Payload
+	trimmedPayload := strings.TrimSpace(string(rawPayload))
+
+	if len(trimmedPayload) > 0 && trimmedPayload[0] == '{' {
+		var jsonMap map[string]interface{}
+		if err := json.Unmarshal([]byte(trimmedPayload), &jsonMap); err == nil {
+			// Search for packet hex in common keys
+			hexKeys := []string{"raw", "hex", "payload", "data", "packet", "raw_hex", "payload_hex", "packet_hex"}
+			for _, k := range hexKeys {
+				if val, ok := jsonMap[k].(string); ok && val != "" {
+					rawHex = val
+					break
+				}
 			}
-			if jsonMsg.Origin != "" {
-				parsed.Origin = jsonMsg.Origin
-			} else if jsonMsg.Observer != "" {
-				parsed.Observer = jsonMsg.Observer
+
+			// Check nested payload object if present
+			if rawHex == "" {
+				if pObj, ok := jsonMap["payload"].(map[string]interface{}); ok {
+					for _, k := range []string{"raw", "hex", "data", "raw_hex", "payload_hex"} {
+						if val, ok := pObj[k].(string); ok && val != "" {
+							rawHex = val
+							break
+						}
+					}
+				}
 			}
-			if jsonMsg.Hash != "" {
-				jsonHash = jsonMsg.Hash
+
+			if orig, ok := jsonMap["origin"].(string); ok && orig != "" {
+				parsed.Origin = orig
 			}
-			// Only override parsed.Region from JSON if it's not generic ("MESH", "GLOBAL") or if topic region is default
-			if jsonMsg.Scope != "" && strings.ToUpper(jsonMsg.Scope) != "MESH" && strings.ToUpper(jsonMsg.Scope) != "GLOBAL" {
-				parsed.Region = strings.ToUpper(jsonMsg.Scope)
-			} else if jsonMsg.Region != "" && strings.ToUpper(jsonMsg.Region) != "MESH" && strings.ToUpper(jsonMsg.Region) != "GLOBAL" {
-				parsed.Region = strings.ToUpper(jsonMsg.Region)
+			if obs, ok := jsonMap["observer"].(string); ok && obs != "" {
+				parsed.Observer = obs
+			}
+			if h, ok := jsonMap["hash"].(string); ok && h != "" {
+				jsonHash = h
+			}
+
+			if sc, ok := jsonMap["scope"].(string); ok && sc != "" && strings.ToUpper(sc) != "MESH" && strings.ToUpper(sc) != "GLOBAL" {
+				parsed.Region = strings.ToUpper(sc)
+			} else if rg, ok := jsonMap["region"].(string); ok && rg != "" && strings.ToUpper(rg) != "MESH" && strings.ToUpper(rg) != "GLOBAL" {
+				parsed.Region = strings.ToUpper(rg)
 			}
 		}
 	} else {
-		rawHex = strings.TrimSpace(string(rawPayload))
+		rawHex = trimmedPayload
 	}
 
 	if rawHex == "" {
@@ -216,9 +224,23 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		parsed.Region = "MESH"
 	}
 
-	// Strictly accept ONLY WRO, IEG, POZ regions. Drop all other regions.
-	if parsed.Region != "WRO" && parsed.Region != "IEG" && parsed.Region != "POZ" {
+	// Flexible region matching for WRO, IEG, POZ (e.g. WRO, WROCLAW, PL-WRO, POZ, POZNAN, POZ_SKORZEWO, IEG, ZIELONAGORA)
+	regUpper := strings.ToUpper(parsed.Region)
+	isWro := strings.Contains(regUpper, "WRO") || strings.Contains(regUpper, "WROCLAW")
+	isPoz := strings.Contains(regUpper, "POZ") || strings.Contains(regUpper, "POZNAN")
+	isIeg := strings.Contains(regUpper, "IEG") || strings.Contains(regUpper, "ZIELONA")
+
+	if !isWro && !isPoz && !isIeg {
 		return nil, fmt.Errorf("packet region '%s' ignored (allowed: WRO, IEG, POZ)", parsed.Region)
+	}
+
+	// Standardize parsed.Region for display
+	if isWro {
+		parsed.Region = "WRO"
+	} else if isPoz {
+		parsed.Region = "POZ"
+	} else if isIeg {
+		parsed.Region = "IEG"
 	}
 
 	return parsed, nil

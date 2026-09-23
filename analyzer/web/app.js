@@ -676,55 +676,6 @@
     });
   }
 
-  function populateFilters() {
-    if (!filterScopeSelect || !filterObserverSelect) return;
-
-    // Collect scopes
-    const scopesSet = new Set();
-    (topologyData.nodes || []).forEach(n => {
-      if (n.scopes) {
-        n.scopes.forEach(s => scopesSet.add(s));
-      }
-    });
-    rawPackets.forEach(p => {
-      if (p.region) scopesSet.add(p.region);
-    });
-
-    // Collect observers / origins
-    const observersSet = new Set();
-    rawPackets.forEach(p => {
-      if (p.observer) observersSet.add(p.observer);
-      if (p.origin) observersSet.add(p.origin);
-    });
-
-    // Populate Scope select
-    const prevScope = selectedScope;
-    let scopeOptions = `<option value="all">Wszystkie Scope</option>`;
-    Array.from(scopesSet).sort().forEach(s => {
-      scopeOptions += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`;
-    });
-    filterScopeSelect.innerHTML = scopeOptions;
-    if (scopesSet.has(prevScope)) {
-      filterScopeSelect.value = prevScope;
-    } else {
-      filterScopeSelect.value = 'all';
-      selectedScope = 'all';
-    }
-
-    // Populate Observer select
-    const prevObserver = selectedObserver;
-    let observerOptions = `<option value="all">Wszyscy Obserwatorzy</option>`;
-    Array.from(observersSet).sort().forEach(o => {
-      observerOptions += `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`;
-    });
-    filterObserverSelect.innerHTML = observerOptions;
-    if (observersSet.has(prevObserver)) {
-      filterObserverSelect.value = prevObserver;
-    } else {
-      filterObserverSelect.value = 'all';
-      selectedObserver = 'all';
-    }
-  }
 
   function updateVisTopology(topo) {
     if (!topo) return;
