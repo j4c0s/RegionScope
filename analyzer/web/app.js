@@ -46,12 +46,14 @@
       btnPause: 'Pauza',
       btnResume: 'Wznów',
       btnRemove: 'Usuń',
+      btnDeleteNode: '🗑️ Usuń Węzeł',
+      btnDeleteEdge: '✂️ Usuń Połączenie',
       confirmClear: 'Czy na pewno chcesz usunąć wszystkie dane z bazy danych?',
+      confirmDeleteNode: 'Czy na pewno chcesz usunąć ten węzeł i jego połączenia?',
+      confirmDeleteEdge: 'Czy na pewno chcesz usunąć to połączenie?',
       supportedPathSizes: 'Obsługiwane prefiksy ścieżki',
       supportedRegions: 'Obsługiwane Scope',
       lastSeen: 'Ostatnio widziany',
-      locationTitle: 'Lokalizacja GPS',
-      noLocation: 'Brak danych GPS',
       neighborsTitle: 'Sąsiednie Węzły (Połączenia)',
       noNeighbors: 'Brak zarejestrowanych sąsiadów',
     },
@@ -98,12 +100,14 @@
       btnPause: 'Pause',
       btnResume: 'Resume',
       btnRemove: 'Delete',
+      btnDeleteNode: '🗑️ Delete Node',
+      btnDeleteEdge: '✂️ Delete Connection',
       confirmClear: 'Are you sure you want to clear all topology and packet database records?',
+      confirmDeleteNode: 'Are you sure you want to delete this node and its connections?',
+      confirmDeleteEdge: 'Are you sure you want to delete this connection?',
       supportedPathSizes: 'Supported Path Prefixes',
       supportedRegions: 'Supported Regions (Scope)',
       lastSeen: 'Last Seen',
-      locationTitle: 'GPS Location',
-      noLocation: 'No GPS data',
       neighborsTitle: 'Neighbor Nodes (Connections)',
       noNeighbors: 'No registered neighbors',
     }
@@ -112,7 +116,6 @@
   let currentLang = localStorage.getItem('mc_analyzer_lang') || 'pl';
   let isGroupedByHash = localStorage.getItem('mc_group_by_hash') === 'true';
 
-  let isGpsPinned = true;
 
   let rawPackets = [];
   let brokers = [];
@@ -144,19 +147,9 @@
   const packetTableBody = document.getElementById('packetTableBody');
   const emptyState = document.getElementById('emptyState');
   const nodeInfoBox = document.getElementById('nodeInfoBox');
-  const pinGpsToggle = document.getElementById('pinGpsToggle');
-
   groupByHashToggle.checked = isGroupedByHash;
   if (isGroupedByHash) {
     thCount.classList.remove('hidden');
-  }
-
-  if (pinGpsToggle) {
-    pinGpsToggle.checked = isGpsPinned;
-    pinGpsToggle.addEventListener('change', (e) => {
-      isGpsPinned = e.target.checked;
-      toggleGpsPinning(isGpsPinned);
-    });
   }
 
   // --- View Switcher ---
@@ -188,67 +181,6 @@
     }
   }
 
-  function toggleGpsPinning(pinned) {
-    if (!topologyData || !topologyData.nodes) return;
-
-    const gpsNodes = (topologyData.nodes || []).filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
-    let centerLat = 0, centerLon = 0;
-    let scale = 15000;
-
-    if (gpsNodes.length > 0) {
-      let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
-      gpsNodes.forEach(n => {
-        if (n.lat < minLat) minLat = n.lat;
-        if (n.lat > maxLat) maxLat = n.lat;
-        if (n.lon < minLon) minLon = n.lon;
-        if (n.lon > maxLon) maxLon = n.lon;
-      });
-      centerLat = (minLat + maxLat) / 2;
-      centerLon = (minLon + maxLon) / 2;
-      const latSpan = maxLat - minLat;
-      const lonSpan = maxLon - minLon;
-      const maxSpan = Math.max(latSpan, lonSpan);
-      if (maxSpan > 0) {
-        scale = Math.max(10000, 600 / maxSpan);
-      }
-    }
-
-    const updates = [];
-    (topologyData.nodes || []).forEach(n => {
-      if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
-        if (pinned) {
-          updates.push({
-            id: n.id,
-            x: (n.lon - centerLon) * scale,
-            y: -(n.lat - centerLat) * scale,
-            fixed: { x: true, y: true },
-            physics: false
-          });
-        } else {
-          // When unpinned, unfix node and let physics take over
-          updates.push({
-            id: n.id,
-            fixed: false,
-            physics: true
-          });
-        }
-      }
-    });
-
-    if (updates.length > 0) {
-      visNodes.update(updates);
-    }
-
-    if (network) {
-      if (!pinned) {
-        network.setOptions({ physics: { enabled: true } });
-        network.startSimulation();
-      } else {
-        network.setOptions({ physics: { enabled: false } });
-        network.stopSimulation();
-      }
-    }
-  }
 
   groupByHashToggle.addEventListener('change', (e) => {
     isGroupedByHash = e.target.checked;
@@ -377,6 +309,9 @@
             topologyData = msg.topology;
             updateVisTopology(topologyData);
           }
+        } else if (msg.type === 'topology' && msg.topology) {
+          topologyData = msg.topology;
+          updateVisTopology(topologyData);
         } else if (msg.type === 'brokers' && msg.brokers) {
           brokers = msg.brokers || [];
           renderBrokers();
@@ -603,68 +538,6 @@
 
     network = new vis.Network(container, data, options);
 
-    // Apply soft relative directional forces (North up, South down, West left, East right)
-    network.on('beforeDrawing', () => {
-      if (!topologyData || !topologyData.nodes || !network.body || !network.body.nodes) return;
-      const nodesMap = new Map();
-      topologyData.nodes.forEach(n => {
-        if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
-          nodesMap.set(n.id, n);
-        }
-      });
-
-      const gpsIds = Array.from(nodesMap.keys());
-      if (gpsIds.length < 2) return;
-
-      const bodyNodes = network.body.nodes;
-
-      for (let i = 0; i < gpsIds.length; i++) {
-        for (let j = i + 1; j < gpsIds.length; j++) {
-          const idA = gpsIds[i];
-          const idB = gpsIds[j];
-          const nodeA = bodyNodes[idA];
-          const nodeB = bodyNodes[idB];
-          const dataA = nodesMap.get(idA);
-          const dataB = nodesMap.get(idB);
-
-          if (!nodeA || !nodeB || !dataA || !dataB) continue;
-
-          // Lat diff: higher lat (North) should have smaller Y
-          const latDiff = dataA.lat - dataB.lat; // >0 if A is North of B
-          const yDiff = nodeA.y - nodeB.y;       // current y diff in canvas (y goes down)
-
-          // If A is North of B, nodeA.y should be less than nodeB.y (yDiff < 0)
-          if (latDiff > 0 && yDiff > -50) {
-            const force = Math.min((yDiff + 50) * 0.05, 5);
-            nodeA.vx -= force;
-            nodeA.vy -= force;
-            nodeB.vx += force;
-            nodeB.vy += force;
-          } else if (latDiff < 0 && yDiff < 50) {
-            const force = Math.min((50 - yDiff) * 0.05, 5);
-            nodeA.vx += force;
-            nodeA.vy += force;
-            nodeB.vx -= force;
-            nodeB.vy -= force;
-          }
-
-          // Lon diff: higher lon (East) should have larger X
-          const lonDiff = dataA.lon - dataB.lon; // >0 if A is East of B
-          const xDiff = nodeA.x - nodeB.x;       // current x diff in canvas
-
-          // If A is East of B, nodeA.x should be greater than nodeB.x (xDiff > 0)
-          if (lonDiff > 0 && xDiff < 50) {
-            const force = Math.min((50 - xDiff) * 0.05, 5);
-            nodeA.vx += force;
-            nodeB.vx -= force;
-          } else if (lonDiff < 0 && xDiff > -50) {
-            const force = Math.min((xDiff + 50) * 0.05, 5);
-            nodeA.vx -= force;
-            nodeB.vx += force;
-          }
-        }
-      }
-    });
 
     updateVisTopology(topologyData);
 
@@ -672,6 +545,9 @@
       if (params.nodes.length > 0) {
         const nodeId = params.nodes[0];
         displayNodeDetails(nodeId);
+      } else if (params.edges.length > 0) {
+        const edgeId = params.edges[0];
+        displayEdgeDetails(edgeId);
       }
     });
   }
@@ -719,23 +595,10 @@
           border: nodeColor,
           highlight: { background: nodeColor, border: '#ffffff' }
         },
-        title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nLast Seen: ${formatTime(n.last_seen)}`
+        title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nLast Seen: ${formatTime(n.last_seen)}`,
+        fixed: false,
+        physics: true
       };
-
-      if (n.lat && n.lon && (n.lat !== 0 || n.lon !== 0)) {
-        if (isGpsPinned) {
-          nodeObj.x = (n.lon - centerLon) * scale;
-          nodeObj.y = -(n.lat - centerLat) * scale;
-          nodeObj.fixed = { x: true, y: true };
-          nodeObj.physics = false;
-        } else {
-          nodeObj.fixed = false;
-          nodeObj.physics = true;
-        }
-      } else {
-        nodeObj.fixed = false;
-        nodeObj.physics = true;
-      }
 
       nodeUpdates.push(nodeObj);
     });
@@ -788,15 +651,6 @@
 
     visNodes.update(nodeUpdates);
     visEdges.update(edgeUpdates);
-
-    if (network) {
-      if (!isGpsPinned) {
-        network.setOptions({ physics: { enabled: true } });
-        network.startSimulation();
-      } else {
-        network.stopSimulation();
-      }
-    }
   }
 
   function animatePacketPath(pkt) {
@@ -864,17 +718,51 @@
           <span class="code-font">${formatTime(node.last_seen)}</span>
         </div>
 
-        <div class="detail-field">
-          <span class="detail-label">${t.locationTitle}:</span>
-          <span class="code-font">${(node.lat && node.lon && (node.lat !== 0 || node.lon !== 0)) ? `${node.lat.toFixed(6)}, ${node.lon.toFixed(6)}` : t.noLocation}</span>
-        </div>
-
         <div class="detail-field" style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px;">
           <span class="detail-label" style="font-weight: 600;">${t.neighborsTitle} (${neighborIds.size}):</span>
           ${neighborsHtml}
         </div>
+
+        <div style="margin-top: 16px;">
+          <button type="button" class="btn btn-danger btn-sm" id="btnDeleteNodeAction" style="width: 100%;">${t.btnDeleteNode}</button>
+        </div>
       </div>
     `;
+
+    document.getElementById('btnDeleteNodeAction')?.addEventListener('click', () => {
+      if (confirm(t.confirmDeleteNode)) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'delete_node', id: node.id }));
+        }
+      }
+    });
+  }
+
+  function displayEdgeDetails(edgeId) {
+    const t = translations[currentLang];
+    const parts = edgeId.split('<->');
+    if (parts.length < 2) return;
+    const source = parts[0];
+    const target = parts[1];
+
+    nodeInfoBox.innerHTML = `
+      <div class="node-detail-card">
+        <h4 class="code-font" style="color:var(--accent-blue);">${escapeHtml(source)} &harr; ${escapeHtml(target)}</h4>
+        <p style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">Połączenie w topologii</p>
+
+        <div style="margin-top: 16px;">
+          <button type="button" class="btn btn-danger btn-sm" id="btnDeleteEdgeAction" style="width: 100%;">${t.btnDeleteEdge}</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btnDeleteEdgeAction')?.addEventListener('click', () => {
+      if (confirm(t.confirmDeleteEdge)) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'delete_edge', source: source, target: target }));
+        }
+      }
+    });
   }
 
   function isEdgeFresh(lastSeenIso) {

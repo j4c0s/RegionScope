@@ -559,8 +559,10 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 			}
 
 			var req struct {
-				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker", "clear_db"
+				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker", "clear_db", "delete_node", "delete_edge"
 				ID       string `json:"id"`
+				Source   string `json:"source"`
+				Target   string `json:"target"`
 				Host     string `json:"host"`
 				Port     string `json:"port"`
 				Topic    string `json:"topic"`
@@ -589,10 +591,31 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 					toggleBroker(req.ID, *req.Enabled)
 				} else if req.Action == "clear_db" {
 					clearAllData()
+				} else if req.Action == "delete_node" && req.ID != "" {
+					if dbStorage != nil {
+						_ = dbStorage.DeleteNode(req.ID)
+						broadcastTopology()
+					}
+				} else if req.Action == "delete_edge" && req.Source != "" && req.Target != "" {
+					if dbStorage != nil {
+						_ = dbStorage.DeleteEdge(req.Source, req.Target)
+						broadcastTopology()
+					}
 				}
 			}
 		}
 	}()
+}
+
+func broadcastTopology() {
+	var topo *storage.TopologyGraph
+	if dbStorage != nil {
+		topo, _ = dbStorage.GetTopologyGraph()
+	}
+	broadcastJson(WsMessage{
+		Type:     "topology",
+		Topology: topo,
+	})
 }
 
 func clearAllData() {

@@ -348,8 +348,8 @@ func (s *Storage) GetTopologyGraph() (*TopologyGraph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Include 2-byte (len=4) and 3-byte (len=6) or longer nodes in topology map
-	nodesRows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json FROM nodes WHERE length(id) >= 4")
+	// Include all nodes (1-byte len=2, 2-byte len=4, 3-byte len=6, observer len>6) in topology map
+	nodesRows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json FROM nodes")
 	if err != nil {
 		return nil, err
 	}
@@ -361,16 +361,14 @@ func (s *Storage) GetTopologyGraph() (*TopologyGraph, error) {
 		var n Node
 		var scopesJson, pathSizesJson string
 		if err := nodesRows.Scan(&n.ID, &n.Name, &n.LastSeen, &n.Lat, &n.Lon, &scopesJson, &pathSizesJson); err == nil {
-			if len(n.ID) >= 4 {
-				_ = json.Unmarshal([]byte(scopesJson), &n.Scopes)
-				_ = json.Unmarshal([]byte(pathSizesJson), &n.PathSizes)
-				nodes = append(nodes, &n)
-				nodeMap[n.ID] = true
-			}
+			_ = json.Unmarshal([]byte(scopesJson), &n.Scopes)
+			_ = json.Unmarshal([]byte(pathSizesJson), &n.PathSizes)
+			nodes = append(nodes, &n)
+			nodeMap[n.ID] = true
 		}
 	}
 
-	edgesRows, err := s.db.Query("SELECT source, target, last_seen, traffic_count FROM edges WHERE length(source) >= 4 AND length(target) >= 4")
+	edgesRows, err := s.db.Query("SELECT source, target, last_seen, traffic_count FROM edges")
 	if err != nil {
 		return nil, err
 	}
@@ -396,6 +394,38 @@ func containsStr(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Storage) DeleteNode(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.ToUpper(id)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM nodes WHERE id = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM edges WHERE source = ? OR target = ?", id, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (s *Storage) DeleteEdge(source, target string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	source = strings.ToUpper(source)
+	target = strings.ToUpper(target)
+
+	_, err := s.db.Exec("DELETE FROM edges WHERE (source = ? AND target = ?) OR (source = ? AND target = ?)", source, target, target, source)
+	return err
 }
 
 func containsInt(slice []int, val int) bool {
