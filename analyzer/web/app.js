@@ -48,9 +48,12 @@
       btnRemove: 'Usuń',
       btnDeleteNode: '🗑️ Usuń Węzeł',
       btnDeleteEdge: '✂️ Usuń Połączenie',
+      btnMergeNodes: '🔗 Połącz / Deduplikuj Węzeł',
+      labelSelectTargetNode: 'Wybierz docelowy węzeł 3B/2B:',
       confirmClear: 'Czy na pewno chcesz usunąć wszystkie dane z bazy danych?',
       confirmDeleteNode: 'Czy na pewno chcesz usunąć ten węzeł i jego połączenia?',
       confirmDeleteEdge: 'Czy na pewno chcesz usunąć to połączenie?',
+      confirmMergeNodes: 'Czy na pewno chcesz połączyć węzeł {alias} z węzłem {target}?',
       supportedPathSizes: 'Obsługiwane prefiksy ścieżki',
       supportedRegions: 'Obsługiwane Scope',
       lastSeen: 'Ostatnio widziany',
@@ -102,9 +105,12 @@
       btnRemove: 'Delete',
       btnDeleteNode: '🗑️ Delete Node',
       btnDeleteEdge: '✂️ Delete Connection',
+      btnMergeNodes: '🔗 Merge / Deduplicate Node',
+      labelSelectTargetNode: 'Select target 3B/2B node:',
       confirmClear: 'Are you sure you want to clear all topology and packet database records?',
       confirmDeleteNode: 'Are you sure you want to delete this node and its connections?',
       confirmDeleteEdge: 'Are you sure you want to delete this connection?',
+      confirmMergeNodes: 'Are you sure you want to merge node {alias} into target node {target}?',
       supportedPathSizes: 'Supported Path Prefixes',
       supportedRegions: 'Supported Regions (Scope)',
       lastSeen: 'Last Seen',
@@ -714,6 +720,23 @@
       neighborsHtml = `<p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${t.noNeighbors}</p>`;
     }
 
+    // Prepare deduplication candidate options for merging
+    const candidates = (topologyData.nodes || []).filter(n => n.id !== node.id && n.id.length >= 4);
+    let mergeSectionHtml = '';
+    if (node.id.length <= 4) {
+      let optionsHtml = candidates.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.id)} - ${escapeHtml(c.name || 'Node')}</option>`).join('');
+      mergeSectionHtml = `
+        <div style="margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+          <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">${t.labelSelectTargetNode}</label>
+          <select id="selectTargetNode" class="form-control" style="width:100%; font-size: 12px; padding: 4px 8px; margin-bottom: 8px;">
+            <option value="">-- ${t.labelSelectTargetNode} --</option>
+            ${optionsHtml}
+          </select>
+          <button type="button" class="btn btn-primary btn-sm" id="btnMergeNodeAction" style="width: 100%;">${t.btnMergeNodes}</button>
+        </div>
+      `;
+    }
+
     nodeInfoBox.innerHTML = `
       <div class="node-detail-card">
         <h4 class="code-font" style="color:var(--accent-blue);">${escapeHtml(node.id)}</h4>
@@ -739,6 +762,8 @@
           ${neighborsHtml}
         </div>
 
+        ${mergeSectionHtml}
+
         <div style="margin-top: 16px;">
           <button type="button" class="btn btn-danger btn-sm" id="btnDeleteNodeAction" style="width: 100%;">${t.btnDeleteNode}</button>
         </div>
@@ -749,6 +774,17 @@
       if (confirm(t.confirmDeleteNode)) {
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: 'delete_node', id: node.id }));
+        }
+      }
+    });
+
+    document.getElementById('btnMergeNodeAction')?.addEventListener('click', () => {
+      const targetId = document.getElementById('selectTargetNode')?.value;
+      if (!targetId) return;
+      const confirmText = t.confirmMergeNodes.replace('{alias}', node.id).replace('{target}', targetId);
+      if (confirm(confirmText)) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'merge_nodes', alias_id: node.id, target_id: targetId }));
         }
       }
     });

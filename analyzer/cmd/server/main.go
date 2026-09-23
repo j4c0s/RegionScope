@@ -559,8 +559,10 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 			}
 
 			var req struct {
-				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker", "clear_db", "delete_node", "delete_edge"
+				Action   string `json:"action"` // "add_broker", "remove_broker", "toggle_broker", "clear_db", "delete_node", "delete_edge", "merge_nodes"
 				ID       string `json:"id"`
+				AliasID  string `json:"alias_id"`
+				TargetID string `json:"target_id"`
 				Source   string `json:"source"`
 				Target   string `json:"target"`
 				Host     string `json:"host"`
@@ -599,6 +601,11 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 				} else if req.Action == "delete_edge" && req.Source != "" && req.Target != "" {
 					if dbStorage != nil {
 						_ = dbStorage.DeleteEdge(req.Source, req.Target)
+						broadcastTopology()
+					}
+				} else if req.Action == "merge_nodes" && req.AliasID != "" && req.TargetID != "" {
+					if dbStorage != nil {
+						_ = dbStorage.MergeNodes(req.AliasID, req.TargetID)
 						broadcastTopology()
 					}
 				}

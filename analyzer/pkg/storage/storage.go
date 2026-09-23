@@ -68,6 +68,11 @@ func (s *Storage) initSchema() error {
 		path_sizes_json TEXT DEFAULT '[]'
 	);
 
+	CREATE TABLE IF NOT EXISTS node_aliases (
+		alias_id TEXT PRIMARY KEY,
+		target_id TEXT NOT NULL
+	);
+
 	CREATE TABLE IF NOT EXISTS edges (
 		source TEXT,
 		target TEXT,
@@ -191,6 +196,14 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 
 func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string {
 	prefix = strings.ToUpper(prefix)
+
+	// Check explicit manual aliases first
+	var explicitTarget string
+	err := s.db.QueryRow("SELECT target_id FROM node_aliases WHERE alias_id = ?", prefix).Scan(&explicitTarget)
+	if err == nil && explicitTarget != "" {
+		return explicitTarget
+	}
+
 	if len(prefix) >= 6 {
 		return prefix
 	}
@@ -426,6 +439,73 @@ func (s *Storage) DeleteEdge(source, target string) error {
 
 	_, err := s.db.Exec("DELETE FROM edges WHERE (source = ? AND target = ?) OR (source = ? AND target = ?)", source, target, target, source)
 	return err
+}
+
+func (s *Storage) MergeNodes(aliasID, targetID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	aliasID = strings.ToUpper(strings.TrimSpace(aliasID))
+	targetID = strings.ToUpper(strings.TrimSpace(targetID))
+
+	if aliasID == "" || targetID == "" || aliasID == targetID {
+		return fmt.Errorf("invalid merge IDs")
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Insert into node_aliases mapping
+	_, err = tx.Exec("INSERT INTO node_aliases (alias_id, target_id) VALUES (?, ?) ON CONFLICT(alias_id) DO UPDATE SET target_id = EXCLUDED.target_id", aliasID, targetID)
+	if err != nil {
+		return err
+	}
+
+	// Update edges where source or target is aliasID -> redirect to targetID
+	rows, err := tx.Query("SELECT source, target, last_seen, traffic_count FROM edges WHERE source = ? OR target = ?", aliasID, aliasID)
+	if err == nil {
+		type edgeRecord struct {
+			src, tgt, ls string
+			traffic      int
+		}
+		var oldEdges []edgeRecord
+		for rows.Next() {
+			var r edgeRecord
+			if err := rows.Scan(&r.src, &r.tgt, &r.ls, &r.traffic); err == nil {
+				oldEdges = append(oldEdges, r)
+			}
+		}
+		rows.Close()
+
+		for _, e := range oldEdges {
+			newSrc := e.src
+			newTgt := e.tgt
+			if newSrc == aliasID {
+				newSrc = targetID
+			}
+			if newTgt == aliasID {
+				newTgt = targetID
+			}
+			if newSrc != newTgt {
+				_, _ = tx.Exec(`
+					INSERT INTO edges (source, target, last_seen, traffic_count)
+					VALUES (?, ?, ?, ?)
+					ON CONFLICT(source, target) DO UPDATE SET
+						last_seen = MAX(edges.last_seen, EXCLUDED.last_seen),
+						traffic_count = edges.traffic_count + EXCLUDED.traffic_count;
+				`, newSrc, newTgt, e.ls, e.traffic)
+			}
+		}
+	}
+
+	// Delete old aliasID node and edges
+	_, _ = tx.Exec("DELETE FROM edges WHERE source = ? OR target = ?", aliasID, aliasID)
+	_, _ = tx.Exec("DELETE FROM nodes WHERE id = ?", aliasID)
+
+	return tx.Commit()
 }
 
 func containsInt(slice []int, val int) bool {

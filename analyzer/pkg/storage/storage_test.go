@@ -85,3 +85,40 @@ func TestStorageSequencePathMerging(t *testing.T) {
 		t.Errorf("Expected 1B prefix '5C' to resolve to '5C1A20', got '%s'", pkt1BSeq.ResolvedHops[1])
 	}
 }
+
+func TestStorageManualNodeMerging(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	store, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer store.Close()
+
+	// Seed node A1 (1B) and node A1B2C3 (3B)
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"A1", "B2"},
+	})
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"A1B2C3", "D4E5F6"},
+	})
+
+	// Manually merge node "A1" into "A1B2C3"
+	if err := store.MergeNodes("A1", "A1B2C3"); err != nil {
+		t.Fatalf("MergeNodes failed: %v", err)
+	}
+
+	// Verify new packet with hop "A1" resolves directly to "A1B2C3"
+	pkt := &packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"A1"},
+	}
+	store.RecordPacket(pkt)
+
+	if pkt.ResolvedHops[0] != "A1B2C3" {
+		t.Errorf("Expected aliased node 'A1' to resolve to 'A1B2C3', got '%s'", pkt.ResolvedHops[0])
+	}
+}
