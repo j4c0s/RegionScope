@@ -1,6 +1,9 @@
 package packet
 
 import (
+	"crypto/aes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -54,6 +57,7 @@ type ParsedPacket struct {
 	Region       string   `json:"region"`
 	Observer     string   `json:"observer"`
 	Origin       string   `json:"origin"`
+	Scope        string   `json:"scope,omitempty"`
 	RouteType    int      `json:"route_type"`
 	PathByteSize int      `json:"path_byte_size"`
 	PathCount    int      `json:"path_count"`
@@ -140,10 +144,15 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 				jsonHash = h
 			}
 
-			if sc, ok := jsonMap["scope"].(string); ok && sc != "" && strings.ToUpper(sc) != "MESH" && strings.ToUpper(sc) != "GLOBAL" {
-				parsed.Region = strings.ToUpper(sc)
-			} else if rg, ok := jsonMap["region"].(string); ok && rg != "" && strings.ToUpper(rg) != "MESH" && strings.ToUpper(rg) != "GLOBAL" {
-				parsed.Region = strings.ToUpper(rg)
+			if sc, ok := jsonMap["scope"].(string); ok && sc != "" {
+				parsed.Scope = strings.ToUpper(sc)
+				if strings.ToUpper(sc) != "MESH" && strings.ToUpper(sc) != "GLOBAL" {
+					parsed.Region = strings.ToUpper(sc)
+				}
+			} else if rg, ok := jsonMap["region"].(string); ok && rg != "" {
+				if strings.ToUpper(rg) != "MESH" && strings.ToUpper(rg) != "GLOBAL" {
+					parsed.Region = strings.ToUpper(rg)
+				}
 			}
 		}
 	} else {
@@ -275,7 +284,24 @@ func decodePayloadDetails(pType byte, payload []byte, pkt *ParsedPacket) {
 		if len(payload) >= 3 {
 			channelHash := payload[0]
 			pkt.MAC = strings.ToUpper(hex.EncodeToString(payload[1:3]))
-			_ = channelHash
+			ciphertext := payload[3:]
+
+			// Attempt AES-128-ECB channel decryption with known keys
+			knownChannels := []string{"#public", "Public", "#mesh", "mesh", "#wro", "#poz", "#ieg", "WRO", "POZ", "IEG"}
+			for _, chName := range knownChannels {
+				key := deriveChannelKey(chName)
+				if channelHashBytes(key) == channelHash {
+					if plain, ok := decryptChannelBlock(key, payload[1:3], ciphertext); ok {
+						if ts, sender, msg, err := parseChannelPlaintext(plain); err == nil {
+							_ = ts
+							pkt.ChannelName = chName
+							pkt.Sender = sender
+							pkt.DecryptedTxt = msg
+							break
+						}
+					}
+				}
+			}
 		}
 	case 0x0B: // PayloadTypeControl
 		if len(payload) >= 1 {
@@ -349,6 +375,68 @@ func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
 			pkt.AdvertName = nameStr
 		}
 	}
+}
+
+func deriveChannelKey(channelName string) []byte {
+	h := sha256.Sum256([]byte(channelName))
+	return h[:16]
+}
+
+func channelHashBytes(key []byte) byte {
+	h := sha256.Sum256(key)
+	return h[0]
+}
+
+func decryptChannelBlock(key, mac, ciphertext []byte) ([]byte, bool) {
+	if len(key) != 16 || len(mac) != 2 || len(ciphertext) == 0 || len(ciphertext)%aes.BlockSize != 0 {
+		return nil, false
+	}
+
+	channelSecret := make([]byte, 32)
+	copy(channelSecret, key)
+
+	h := hmac.New(sha256.New, channelSecret)
+	h.Write(ciphertext)
+	calculatedMac := h.Sum(nil)
+	if calculatedMac[0] != mac[0] || calculatedMac[1] != mac[1] {
+		return nil, false
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, false
+	}
+	plaintext := make([]byte, len(ciphertext))
+	for i := 0; i < len(ciphertext); i += aes.BlockSize {
+		block.Decrypt(plaintext[i:i+aes.BlockSize], ciphertext[i:i+aes.BlockSize])
+	}
+
+	return plaintext, true
+}
+
+func parseChannelPlaintext(plaintext []byte) (timestamp uint32, sender string, message string, err error) {
+	if len(plaintext) < 5 {
+		return 0, "", "", fmt.Errorf("plaintext too short")
+	}
+
+	timestamp = binary.LittleEndian.Uint32(plaintext[0:4])
+	text := string(plaintext[5:])
+	if idx := strings.IndexByte(text, 0); idx >= 0 {
+		text = text[:idx]
+	}
+
+	if !utf8.ValidString(text) {
+		return 0, "", "", fmt.Errorf("invalid utf8")
+	}
+
+	if colonIdx := strings.Index(text, ": "); colonIdx > 0 && colonIdx < 50 {
+		potentialSender := text[:colonIdx]
+		if !strings.ContainsAny(potentialSender, ":[]") {
+			return timestamp, potentialSender, text[colonIdx+2:], nil
+		}
+	}
+
+	return timestamp, "", text, nil
 }
 
 func cleanUTF8String(b []byte) string {

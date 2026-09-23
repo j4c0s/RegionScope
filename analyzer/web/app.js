@@ -413,7 +413,10 @@
       const typeBadgeClass = getTypeBadgeClass(p.type_name);
 
       let decodedDetails = p.raw_hex || '-';
-      if (p.advert_name) {
+      if (p.channel_name && p.decrypted_txt) {
+        const senderStr = p.sender ? `[${escapeHtml(p.sender)}]: ` : '';
+        decodedDetails = `💬 <strong style="color:var(--accent-green);">[${escapeHtml(p.channel_name)}]</strong> ${senderStr}${escapeHtml(p.decrypted_txt)}`;
+      } else if (p.advert_name) {
         decodedDetails = `📢 [${escapeHtml(p.advert_name)}] ${decodedDetails}`;
       } else if (p.ctrl_subtype) {
         decodedDetails = `⚙️ ${escapeHtml(p.ctrl_subtype)} | ${decodedDetails}`;
@@ -423,11 +426,13 @@
         decodedDetails = `↔️ ${escapeHtml(p.src_hash)} &rarr; ${escapeHtml(p.dest_hash)} | ${decodedDetails}`;
       }
 
+      const scopeBadge = p.scope ? `<span class="badge-region" title="Inner Scope">${escapeHtml(p.scope)}</span>` : `<span class="badge-region">${escapeHtml(p.region || 'MESH')}</span>`;
+
       return `
         <tr class="packet-row ${isNew ? 'new-entry' : ''}">
           <td class="code-font">${formatTime(p.timestamp)}</td>
           <td><span class="badge-type ${typeBadgeClass}">${escapeHtml(p.type_name || 'DATA')}</span></td>
-          <td><span class="badge-region">${escapeHtml(p.region || 'MESH')}</span></td>
+          <td>${scopeBadge}</td>
           <td style="font-weight: 500;">${escapeHtml(p.origin || p.observer || 'Unknown')}</td>
           <td>
             <span class="${pathBadgeClass}">
