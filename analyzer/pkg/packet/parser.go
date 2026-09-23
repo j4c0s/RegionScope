@@ -48,7 +48,7 @@ func GetPayloadTypeName(pType byte) string {
 	}
 }
 
-// ParsedPacket represents a processed MeshCore packet.
+// ParsedPacket represents a processed MeshCore packet with rich decoded fields.
 type ParsedPacket struct {
 	Timestamp    string   `json:"timestamp"`
 	Region       string   `json:"region"`
@@ -68,6 +68,15 @@ type ParsedPacket struct {
 	AdvertKey    string   `json:"advert_key,omitempty"`
 	Lat          float64  `json:"lat,omitempty"`
 	Lon          float64  `json:"lon,omitempty"`
+	// Decoded Payload fields
+	ChannelName  string   `json:"channel_name,omitempty"`
+	DecryptedTxt string   `json:"decrypted_txt,omitempty"`
+	Sender       string   `json:"sender,omitempty"`
+	CtrlSubtype  string   `json:"ctrl_subtype,omitempty"`
+	DestHash     string   `json:"dest_hash,omitempty"`
+	SrcHash      string   `json:"src_hash,omitempty"`
+	MAC          string   `json:"mac,omitempty"`
+	ExtraHash    string   `json:"extra_hash,omitempty"`
 }
 
 // ParseMeshCorePacket extracts packet path byte size, payload type, repeater hops, and details from an MQTT message.
@@ -213,9 +222,10 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		parsed.Hash = strings.ToUpper(hex.EncodeToString(buf[len(buf)-hashLen:]))
 	}
 
-	// Parse Advert payload if PayloadType == 0x04 (ADVERT)
-	if payloadType == PayloadTypeAdvert && len(buf) > offset {
-		parseAdvertPayload(buf[offset:], parsed)
+	// Decode specific payload types if payload bytes are present
+	if len(buf) > offset {
+		payloadBuf := buf[offset:]
+		decodePayloadDetails(payloadType, payloadBuf, parsed)
 	}
 
 	// Sanitize Region
@@ -244,6 +254,41 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	}
 
 	return parsed, nil
+}
+
+func decodePayloadDetails(pType byte, payload []byte, pkt *ParsedPacket) {
+	switch pType {
+	case PayloadTypeAdvert:
+		parseAdvertPayload(payload, pkt)
+	case PayloadTypeReq, PayloadTypeResp, PayloadTypeTxtMsg:
+		if len(payload) >= 4 {
+			pkt.DestHash = strings.ToUpper(hex.EncodeToString(payload[0:1]))
+			pkt.SrcHash = strings.ToUpper(hex.EncodeToString(payload[1:2]))
+			pkt.MAC = strings.ToUpper(hex.EncodeToString(payload[2:4]))
+		}
+	case PayloadTypeAck:
+		if len(payload) >= 4 {
+			crc := binary.LittleEndian.Uint32(payload[0:4])
+			pkt.ExtraHash = fmt.Sprintf("%08X", crc)
+		}
+	case PayloadTypeGrpTxt:
+		if len(payload) >= 3 {
+			channelHash := payload[0]
+			pkt.MAC = strings.ToUpper(hex.EncodeToString(payload[1:3]))
+			_ = channelHash
+		}
+	case 0x0B: // PayloadTypeControl
+		if len(payload) >= 1 {
+			switch payload[0] & 0xF0 {
+			case 0x80:
+				pkt.CtrlSubtype = "DISCOVER_REQ"
+			case 0x90:
+				pkt.CtrlSubtype = "DISCOVER_RESP"
+			default:
+				pkt.CtrlSubtype = fmt.Sprintf("CTRL_0x%02X", payload[0])
+			}
+		}
+	}
 }
 
 func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {

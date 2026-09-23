@@ -412,6 +412,17 @@
       const countCol = isGroupedByHash ? `<td><span class="badge-count-occurrences">x${p.count || 1}</span></td>` : '';
       const typeBadgeClass = getTypeBadgeClass(p.type_name);
 
+      let decodedDetails = p.raw_hex || '-';
+      if (p.advert_name) {
+        decodedDetails = `📢 [${escapeHtml(p.advert_name)}] ${decodedDetails}`;
+      } else if (p.ctrl_subtype) {
+        decodedDetails = `⚙️ ${escapeHtml(p.ctrl_subtype)} | ${decodedDetails}`;
+      } else if (p.extra_hash) {
+        decodedDetails = `🔑 CRC: ${escapeHtml(p.extra_hash)} | ${decodedDetails}`;
+      } else if (p.dest_hash && p.src_hash) {
+        decodedDetails = `↔️ ${escapeHtml(p.src_hash)} &rarr; ${escapeHtml(p.dest_hash)} | ${decodedDetails}`;
+      }
+
       return `
         <tr class="packet-row ${isNew ? 'new-entry' : ''}">
           <td class="code-font">${formatTime(p.timestamp)}</td>
@@ -426,8 +437,8 @@
           <td>${hopsHtml}</td>
           <td class="code-font" style="color:var(--accent-blue);">${escapeHtml(p.hash || '-')}</td>
           ${countCol}
-          <td class="code-font" style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.raw_hex || '')}">
-            ${escapeHtml(p.raw_hex || '-')}
+          <td class="code-font" style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.raw_hex || '')}">
+            ${decodedDetails}
           </td>
         </tr>
       `;
