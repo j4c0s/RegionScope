@@ -720,8 +720,8 @@
       neighborsHtml = `<p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${t.noNeighbors}</p>`;
     }
 
-    // Prepare deduplication candidate options for merging
-    const candidates = (topologyData.nodes || []).filter(n => n.id !== node.id && n.id.length >= 4);
+    // Prepare deduplication candidate options for merging (only nodes sharing the same prefix start)
+    const candidates = (topologyData.nodes || []).filter(n => n.id !== node.id && n.id.length > node.id.length && n.id.startsWith(node.id));
     let mergeSectionHtml = '';
     if (node.id.length <= 4) {
       let optionsHtml = candidates.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.id)} - ${escapeHtml(c.name || 'Node')}</option>`).join('');
