@@ -542,17 +542,17 @@
       physics: {
         solver: 'barnesHut',
         barnesHut: {
-          gravitationalConstant: -18000, // Very strong repulsion for loose layout
-          centralGravity: 0.02,         // Loose central gravity to let graph spread far
-          springLength: 220,           // Long elastic edge distance
-          springConstant: 0.02,
-          damping: 0.09
+          gravitationalConstant: -8000,
+          centralGravity: 0.01,
+          springLength: 180,
+          springConstant: 0.01,
+          damping: 0.3
         },
-        maxVelocity: 100,
-        minVelocity: 0.5,
+        maxVelocity: 30,
+        minVelocity: 0.75,
         stabilization: {
           enabled: true,
-          iterations: 150
+          iterations: 100
         }
       },
       interaction: {
@@ -626,12 +626,15 @@
       });
     });
 
+    const targetNodeIds = new Set();
     const nodeUpdates = [];
+
     clusterMap.forEach((nodes, cKey) => {
       const isExpanded = expandedClusters.has(cKey);
       const clusterId = 'CLUSTER_' + cKey;
 
       if (!isExpanded) {
+        targetNodeIds.add(clusterId);
         nodeUpdates.push({
           id: clusterId,
           label: `📦 ${cKey}\n(${nodes.length} węzłów)`,
@@ -650,6 +653,7 @@
         });
       } else {
         nodes.forEach(n => {
+          targetNodeIds.add(n.id);
           const isAdvert = n.name && !n.name.startsWith('Node ');
           const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
           const labelText = isAdvert ? `[${n.name}]\n${n.id}` : n.id;
@@ -669,6 +673,16 @@
         });
       }
     });
+
+    // Remove any nodes that are no longer part of current cluster state
+    const currentVisIds = visNodes.getIds();
+    const idsToRemove = currentVisIds.filter(id => !targetNodeIds.has(id));
+    if (idsToRemove.length > 0) {
+      visNodes.remove(idsToRemove);
+    }
+
+    // Incremental update so node positions and network stability persist across packets
+    visNodes.update(nodeUpdates);
 
     // Edge bundling between cluster hubs
     const bundledEdgeMap = new Map();
@@ -699,8 +713,10 @@
       }
     });
 
+    const targetEdgeIds = new Set();
     const edgeUpdates = [];
     bundledEdgeMap.forEach(e => {
+      targetEdgeIds.add(e.id);
       const width = Math.min(2 + Math.log2(e.traffic || 1), 8);
       const isFresh = isEdgeFresh(e.last_seen);
       const color = isFresh ? '#10b981' : '#64748b';
@@ -720,10 +736,13 @@
       });
     });
 
-    visNodes.clear();
-    visEdges.clear();
-    visNodes.add(nodeUpdates);
-    visEdges.add(edgeUpdates);
+    const currentEdgeIds = visEdges.getIds();
+    const edgesToRemove = currentEdgeIds.filter(id => !targetEdgeIds.has(id));
+    if (edgesToRemove.length > 0) {
+      visEdges.remove(edgesToRemove);
+    }
+
+    visEdges.update(edgeUpdates);
   }
 
   function animatePacketPath(pkt) {
