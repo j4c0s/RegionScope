@@ -49,6 +49,7 @@
       btnDeleteNode: '🗑️ Usuń Węzeł',
       btnDeleteEdge: '✂️ Usuń Połączenie',
       btnMergeNodes: '🔗 Połącz / Deduplikuj Węzeł',
+      btnCollapseCluster: '📦 Zwiń Klaster',
       labelSelectTargetNode: 'Wybierz docelowy węzeł 3B/2B:',
       confirmClear: 'Czy na pewno chcesz usunąć wszystkie dane z bazy danych?',
       confirmDeleteNode: 'Czy na pewno chcesz usunąć ten węzeł i jego połączenia?',
@@ -106,6 +107,7 @@
       btnDeleteNode: '🗑️ Delete Node',
       btnDeleteEdge: '✂️ Delete Connection',
       btnMergeNodes: '🔗 Merge / Deduplicate Node',
+      btnCollapseCluster: '📦 Collapse Cluster',
       labelSelectTargetNode: 'Select target 3B/2B node:',
       confirmClear: 'Are you sure you want to clear all topology and packet database records?',
       confirmDeleteNode: 'Are you sure you want to delete this node and its connections?',
@@ -123,6 +125,7 @@
   let isGroupedByHash = localStorage.getItem('mc_group_by_hash') === 'true';
 
 
+  let expandedClusters = new Set();
   let rawPackets = [];
   let brokers = [];
   let topologyData = { nodes: [], edges: [] };
@@ -566,7 +569,14 @@
     network.on('click', (params) => {
       if (params.nodes.length > 0) {
         const nodeId = params.nodes[0];
-        displayNodeDetails(nodeId);
+        if (nodeId.startsWith('CLUSTER_')) {
+          const cKey = nodeId.replace('CLUSTER_', '');
+          expandedClusters.add(cKey);
+          updateVisTopology(topologyData);
+          displayClusterDetails(cKey);
+        } else {
+          displayNodeDetails(nodeId);
+        }
       } else if (params.edges.length > 0) {
         const edgeId = params.edges[0];
         displayEdgeDetails(edgeId);
@@ -575,74 +585,113 @@
   }
 
 
+  function getClusterKey(node) {
+    if (node.scopes && node.scopes.length > 0) {
+      const sc = node.scopes[0].toUpperCase();
+      if (sc === 'WRO' || sc === 'POZ' || sc === 'IEG') {
+        return sc + ' CLUSTER';
+      }
+    }
+    if (node.id && node.id.length >= 2) {
+      return node.id.substring(0, 2) + ' CLUSTER';
+    }
+    return 'OTHER CLUSTER';
+  }
+
   function updateVisTopology(topo) {
     if (!topo) return;
 
     const allNodes = topo.nodes || [];
     const allEdges = topo.edges || [];
 
-    const gpsNodes = allNodes.filter(n => n.lat && n.lon && (n.lat !== 0 || n.lon !== 0));
-    let centerLat = 0, centerLon = 0;
-    let scale = 15000;
-
-    if (gpsNodes.length > 0) {
-      let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
-      gpsNodes.forEach(n => {
-        if (n.lat < minLat) minLat = n.lat;
-        if (n.lat > maxLat) maxLat = n.lat;
-        if (n.lon < minLon) minLon = n.lon;
-        if (n.lon > maxLon) maxLon = n.lon;
-      });
-      centerLat = (minLat + maxLat) / 2;
-      centerLon = (minLon + maxLon) / 2;
-      const latSpan = maxLat - minLat;
-      const lonSpan = maxLon - minLon;
-      const maxSpan = Math.max(latSpan, lonSpan);
-      if (maxSpan > 0) {
-        scale = Math.max(10000, 600 / maxSpan);
-      }
-    }
-
-    const nodeUpdates = [];
+    // Group nodes by shared scope region or 1-byte prefix
+    const clusterMap = new Map();
     allNodes.forEach(n => {
-      const isAdvert = n.name && !n.name.startsWith('Node ');
-      const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
-      const labelText = isAdvert ? `[${n.name}]\n${n.id}` : n.id;
-
-      const nodeObj = {
-        id: n.id,
-        label: labelText,
-        color: {
-          background: isAdvert ? 'rgba(56, 189, 248, 0.25)' : 'rgba(168, 85, 247, 0.25)',
-          border: nodeColor,
-          highlight: { background: nodeColor, border: '#ffffff' }
-        },
-        title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nLast Seen: ${formatTime(n.last_seen)}`,
-        fixed: false,
-        physics: true
-      };
-
-      nodeUpdates.push(nodeObj);
+      const key = getClusterKey(n);
+      if (!clusterMap.has(key)) {
+        clusterMap.set(key, []);
+      }
+      clusterMap.get(key).push(n);
     });
 
-    // Merge bidirectional edges (A -> B and B -> A) into single elastic edge with double arrows
-    const edgeMap = new Map();
+    const nodeToCluster = new Map();
+    clusterMap.forEach((nodes, cKey) => {
+      const isExpanded = expandedClusters.has(cKey);
+      nodes.forEach(n => {
+        if (isExpanded) {
+          nodeToCluster.set(n.id, n.id);
+        } else {
+          nodeToCluster.set(n.id, 'CLUSTER_' + cKey);
+        }
+      });
+    });
+
+    const nodeUpdates = [];
+    clusterMap.forEach((nodes, cKey) => {
+      const isExpanded = expandedClusters.has(cKey);
+      const clusterId = 'CLUSTER_' + cKey;
+
+      if (!isExpanded) {
+        nodeUpdates.push({
+          id: clusterId,
+          label: `📦 ${cKey}\n(${nodes.length} węzłów)`,
+          shape: 'circle',
+          size: 30,
+          color: {
+            background: 'rgba(56, 189, 248, 0.35)',
+            border: '#38bdf8',
+            highlight: { background: '#38bdf8', border: '#ffffff' }
+          },
+          font: { size: 13, bold: true, color: '#f8fafc' },
+          title: `Klaster: ${cKey}\nWęzły: ${nodes.length}\n(Kliknij, aby eksplodować/rozwinąć)`,
+          isClusterNode: true,
+          clusterKey: cKey,
+          physics: true
+        });
+      } else {
+        nodes.forEach(n => {
+          const isAdvert = n.name && !n.name.startsWith('Node ');
+          const nodeColor = isAdvert ? '#38bdf8' : '#a855f7';
+          const labelText = isAdvert ? `[${n.name}]\n${n.id}` : n.id;
+
+          nodeUpdates.push({
+            id: n.id,
+            label: labelText,
+            color: {
+              background: isAdvert ? 'rgba(56, 189, 248, 0.25)' : 'rgba(168, 85, 247, 0.25)',
+              border: nodeColor,
+              highlight: { background: nodeColor, border: '#ffffff' }
+            },
+            title: `Node ID: ${n.id}\nName: ${n.name || 'Unknown'}\nLast Seen: ${formatTime(n.last_seen)}`,
+            clusterKey: cKey,
+            physics: true
+          });
+        });
+      }
+    });
+
+    // Edge bundling between cluster hubs
+    const bundledEdgeMap = new Map();
     allEdges.forEach(e => {
       if (!e.source || !e.target) return;
-      const sortedPair = [e.source, e.target].sort().join('<->');
+      const mappedSrc = nodeToCluster.get(e.source) || e.source;
+      const mappedTgt = nodeToCluster.get(e.target) || e.target;
 
-      if (edgeMap.has(sortedPair)) {
-        const existing = edgeMap.get(sortedPair);
+      if (mappedSrc === mappedTgt) return;
+
+      const sortedPair = [mappedSrc, mappedTgt].sort().join('<->');
+      if (bundledEdgeMap.has(sortedPair)) {
+        const existing = bundledEdgeMap.get(sortedPair);
         existing.traffic += e.traffic_count;
         existing.isBidirectional = true;
         if (e.last_seen > existing.last_seen) {
           existing.last_seen = e.last_seen;
         }
       } else {
-        edgeMap.set(sortedPair, {
+        bundledEdgeMap.set(sortedPair, {
           id: sortedPair,
-          source: e.source,
-          target: e.target,
+          source: mappedSrc,
+          target: mappedTgt,
           traffic: e.traffic_count,
           last_seen: e.last_seen,
           isBidirectional: false
@@ -651,8 +700,8 @@
     });
 
     const edgeUpdates = [];
-    edgeMap.forEach(e => {
-      const width = Math.min(1.5 + Math.log2(e.traffic || 1), 7);
+    bundledEdgeMap.forEach(e => {
+      const width = Math.min(2 + Math.log2(e.traffic || 1), 8);
       const isFresh = isEdgeFresh(e.last_seen);
       const color = isFresh ? '#10b981' : '#64748b';
 
@@ -667,12 +716,14 @@
         arrows: arrowsObj,
         width: width,
         color: { color: color, highlight: '#38bdf8' },
-        title: `Relacja: ${e.source} ${e.isBidirectional ? '↔' : '→'} ${e.target}\nPakiety: ${e.traffic}\nOstatnia aktywność: ${formatTime(e.last_seen)}`
+        title: `Połączenie: ${e.source} ${e.isBidirectional ? '↔' : '→'} ${e.target}\nPakiety: ${e.traffic}`
       });
     });
 
-    visNodes.update(nodeUpdates);
-    visEdges.update(edgeUpdates);
+    visNodes.clear();
+    visEdges.clear();
+    visNodes.add(nodeUpdates);
+    visEdges.add(edgeUpdates);
   }
 
   function animatePacketPath(pkt) {
@@ -691,6 +742,38 @@
         }, 1500);
       }
     }
+  }
+
+  function displayClusterDetails(cKey) {
+    const t = translations[currentLang];
+    const clusterNodes = (topologyData.nodes || []).filter(n => getClusterKey(n) === cKey);
+
+    const nodeListHtml = clusterNodes.map(n => {
+      return `<li style="margin-bottom: 4px; font-size: 13px;"><strong class="code-font" style="color:var(--accent-blue);">${escapeHtml(n.id)}</strong> - ${escapeHtml(n.name || 'Node')}</li>`;
+    }).join('');
+
+    nodeInfoBox.innerHTML = `
+      <div class="node-detail-card">
+        <h4 class="code-font" style="color:var(--accent-blue);">📦 ${escapeHtml(cKey)}</h4>
+        <p style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">Klaster (${clusterNodes.length} węzłów)</p>
+        <p style="font-size: 12px; color: var(--text-muted);">Klaster został rozwinięty / eksplodowany na mapie.</p>
+
+        <div style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+          <span class="detail-label" style="font-weight: 600;">Węzły w klastrze:</span>
+          <ul style="padding-left: 18px; margin-top: 6px; max-height: 180px; overflow-y: auto;">${nodeListHtml}</ul>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCollapseClusterAction" style="width: 100%;">${t.btnCollapseCluster}</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btnCollapseClusterAction')?.addEventListener('click', () => {
+      expandedClusters.delete(cKey);
+      updateVisTopology(topologyData);
+      nodeInfoBox.innerHTML = `<p class="text-muted">${t.nodeInfoPlaceholder}</p>`;
+    });
   }
 
   function displayNodeDetails(nodeId) {

@@ -450,6 +450,9 @@ func removeBroker(id string) {
 }
 
 func addAndBroadcastPacket(pkt *packet.ParsedPacket) {
+	if pkt == nil {
+		return
+	}
 	if dbStorage != nil {
 		dbStorage.RecordPacket(pkt)
 	}
@@ -756,18 +759,29 @@ func createSimulatedPacket() *packet.ParsedPacket {
 	if headerByte == 0x11 {
 		// Append Advert payload (Key + Name)
 		rawBuf = append(rawBuf, []byte{0x03, 0x3D, 0xA9, 0xE5}...)
-		rawBuf = append(rawBuf, []byte("PL-KRK-REP-1")...)
+		rawBuf = append(rawBuf, []byte("PL-WRO-REP-1")...)
 	}
 
 	rawHex := hex.EncodeToString(rawBuf)
 
-	regions := []string{"KRK", "WAW", "RZE", "RDO", "GDN"}
+	regions := []string{"WRO", "POZ", "IEG"}
 	region := regions[time.Now().UnixNano()%int64(len(regions))]
 
 	pkt, _ := packet.ParseMeshCorePacket("meshcore/"+region+"/033DA9E56A45/packets", []byte(rawHex))
 	if pkt != nil {
 		pkt.Hash = fmt.Sprintf("%X", time.Now().UnixNano()%0xFFFFFFFF)
 		pkt.Origin = "Node " + strconv.Itoa(int(time.Now().Unix()%100))
+	} else {
+		pkt = &packet.ParsedPacket{
+			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+			Region:    region,
+			Observer:  "033DA9E56A45",
+			Origin:    "SimulatedNode",
+			TypeName:  "GRP_TXT",
+			Hash:      fmt.Sprintf("%X", time.Now().UnixNano()%0xFFFFFFFF),
+			RawHex:    rawHex,
+			Hops:      []string{"A1B2C3", "D4E5F6"},
+		}
 	}
 	return pkt
 }
