@@ -140,6 +140,16 @@ func main() {
 			handleClearApi(w, r)
 		case r.URL.Path == "/api/simulate":
 			handleSimulate(w, r)
+		case r.URL.Path == "/api/packets":
+			handlePacketsApi(w, r)
+		case strings.HasPrefix(r.URL.Path, "/api/packets/"):
+			handlePacketDetailApi(w, r)
+		case r.URL.Path == "/api/observers":
+			handleObserversApi(w, r)
+		case r.URL.Path == "/api/nodes/search":
+			handleNodesSearchApi(w, r)
+		case r.URL.Path == "/api/decode":
+			handleDecodeApi(w, r)
 		default:
 			fs.ServeHTTP(w, r)
 		}
@@ -714,6 +724,157 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":       "ok",
 		"brokers":      getBrokersList(),
 		"recent_count": count,
+	})
+}
+
+func handlePacketsApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if dbStorage == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"packets": []interface{}{}, "total": 0})
+		return
+	}
+
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 {
+		limit = 200
+	}
+
+	params := storage.PacketQueryParams{
+		Since:       q.Get("since"),
+		Limit:       limit,
+		Region:      q.Get("region"),
+		Observer:    q.Get("observer"),
+		Node:        q.Get("node"),
+		Channel:     q.Get("channel"),
+		Type:        q.Get("type"),
+		Hash:        q.Get("hash"),
+		GroupByHash: q.Get("groupByHash") == "true",
+	}
+
+	pkts, total, err := dbStorage.QueryPackets(params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"packets": pkts,
+		"total":   total,
+	})
+}
+
+func handlePacketDetailApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if dbStorage == nil {
+		http.Error(w, "database not available", http.StatusInternalServerError)
+		return
+	}
+
+	query := strings.TrimPrefix(r.URL.Path, "/api/packets/")
+	query = strings.TrimSpace(query)
+	if query == "" {
+		http.Error(w, "missing packet query", http.StatusBadRequest)
+		return
+	}
+
+	basePkt, observations, err := dbStorage.GetPacketByHashOrID(query)
+	if err != nil {
+		http.Error(w, "packet not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"packet":            basePkt,
+		"observations":      observations,
+		"observation_count": len(observations),
+	})
+}
+
+func handleObserversApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if dbStorage == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"observers": []interface{}{}})
+		return
+	}
+
+	observers, err := dbStorage.GetObservers()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"observers": observers,
+	})
+}
+
+func handleNodesSearchApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if dbStorage == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"nodes": []interface{}{}})
+		return
+	}
+
+	qStr := r.URL.Query().Get("q")
+	nodes, err := dbStorage.SearchNodes(qStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"nodes": nodes,
+	})
+}
+
+func handleDecodeApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Hex string `json:"hex"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Hex) == "" {
+		http.Error(w, "invalid hex payload", http.StatusBadRequest)
+		return
+	}
+
+	rawHex := strings.TrimSpace(body.Hex)
+	pkt, err := packet.ParseMeshCorePacket("meshcore/WRO/BYOP/packets", []byte(rawHex))
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	decodedMap := map[string]interface{}{
+		"header": map[string]interface{}{
+			"routeType":       pkt.RouteType,
+			"payloadType":     pkt.PayloadType,
+			"payloadTypeName": pkt.TypeName,
+		},
+		"path": map[string]interface{}{
+			"hops": pkt.Hops,
+		},
+		"payload": map[string]interface{}{
+			"type":         pkt.TypeName,
+			"advert_name":  pkt.AdvertName,
+			"channel_name": pkt.ChannelName,
+			"decrypted_txt": pkt.DecryptedTxt,
+			"sender":       pkt.Sender,
+			"ctrl_subtype": pkt.CtrlSubtype,
+			"dest_hash":    pkt.DestHash,
+			"src_hash":     pkt.SrcHash,
+		},
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"decoded": decodedMap,
 	})
 }
 

@@ -11,27 +11,53 @@
       statusConnected: 'Połączono z serwerem WS',
       statusDisconnected: 'Rozłączono z serwerem WS',
       settings: 'Ustawienia',
-      colTime: 'Czas',
-      colType: 'Typ Pakietu',
-      colRegion: 'Scope',
-      colOrigin: 'Obserwator / Nadawca',
-      colPathLen: 'Długość ścieżki',
-      colHops: 'Repeatery w Ścieżce',
-      colHash: 'Hash',
-      colCount: 'Ilość',
-      colHex: 'Raw Hex',
       liveTitle: 'Ostatnie Odebrane Pakiety Live',
-      liveFeed: 'Na żywo (WebSockets)',
+      btnRefresh: 'Odśwież',
+      btnPause: 'Pauza',
+      btnResume: 'Wznów',
+      btnFilters: 'Filtry ▾',
+      btnClearFilters: '✕ Wyczyść',
+      btnGroupHash: 'Grupuj po hashu',
+      btnHexPaths: 'Hex Ścieżki',
+      btnDecode: 'Dekoduj Pakiet',
+      phHash: 'Hash pakietu...',
+      phNode: 'Węzeł...',
+      filterPlaceholder: 'Filtr np: hash, typ, nazwa węzła, tekst wiadomości...',
+      phSearchObs: 'Szukaj obserwatora...',
+      obsAll: 'Wszyscy Obserwatorzy ▾',
+      typesAll: 'Wszystkie Typy ▾',
+      chanAll: 'Wszystkie Kanały',
+      tw15: 'Ostatnie 15 min',
+      tw30: 'Ostatnie 30 min',
+      tw60: 'Ostatnia 1 godz.',
+      tw180: 'Ostatnie 3 godz.',
+      tw1440: 'Ostatnie 24 godz.',
+      twAll: 'Wszystkie',
+      sortObs: 'Sortuj: Obserwator',
+      sortPathAsc: 'Sortuj: Ścieżka ↑ (najkrótsza)',
+      sortPathDesc: 'Sortuj: Ścieżka ↓ (najdłuższa)',
+      sortTimeAsc: 'Sortuj: Czas ↑ (najstarszy)',
+      sortTimeDesc: 'Sortuj: Czas ↓ (najnowszy)',
+      colScope: 'Scope',
+      colTime: 'Czas',
+      colHash: 'Hash',
+      colSize: 'Rozmiar',
+      colHB: 'HB',
+      colType: 'Typ',
+      colOrigin: 'Obserwator / Nadawca',
+      colPath: 'Ścieżka',
+      colRpt: 'Ilość',
+      colDetails: 'Szczegóły',
       emptyTitle: 'Oczekiwanie na pakiety MeshCore...',
       emptyDesc: 'Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.',
+      selectPacketPrompt: 'Wybierz pakiet z listy, aby zobaczyć jego pełne szczegóły.',
       nodeInfoTitle: 'Informacje o Węźle',
       nodeInfoPlaceholder: 'Kliknij węzeł na mapie, aby zobaczyć jego właściwości.',
-      legendAdvert: 'Węzeł z Advertu',
-      legendHop: 'Węzeł ze Ścieżki',
+      legendAdvert: 'Known Advert Node',
+      legendHop: 'Hop Node',
       legendFresh: '< 5 min',
       legendStale: '> 1 godz.',
       settingsTitle: 'Ustawienia i Konfiguracja',
-      groupByHash: 'Grupuj pakiety live po hashu',
       mqttServersTitle: 'Zarządzanie Serwerami MQTT',
       labelHost: 'Adres serwera (Host / IP)',
       labelPort: 'Port',
@@ -42,9 +68,7 @@
       dbCleanupTitle: 'Zarządzanie Bazą Danych',
       dbCleanupDesc: 'Czyszczenie usunie zapisane pakiety, słownik węzłów z Advertów oraz krawędzie topologii.',
       btnClearDb: '🗑️ Wyczyść Wszystkie Dane Topologii',
-      noHops: 'Brak repeaterów (Bezpośrednio)',
-      btnPause: 'Pauza',
-      btnResume: 'Wznów',
+      noHops: 'Bezpośrednio',
       btnRemove: 'Usuń',
       btnDeleteNode: '🗑️ Usuń Węzeł',
       btnDeleteEdge: '✂️ Usuń Połączenie',
@@ -55,6 +79,8 @@
       confirmDeleteNode: 'Czy na pewno chcesz usunąć ten węzeł i jego połączenia?',
       confirmDeleteEdge: 'Czy na pewno chcesz usunąć to połączenie?',
       confirmMergeNodes: 'Czy na pewno chcesz połączyć węzeł {alias} z węzłem {target}?',
+      byopTitle: '📦 BYOP - Analiza Własnego Pakietu',
+      byopDesc: 'Wklej surowy ciąg HEX pakietu z radia lub MQTT, aby przeprowadzić pełne dekodowanie i analizę bajt po bajcie:',
       supportedPathSizes: 'Obsługiwane prefiksy ścieżki',
       supportedRegions: 'Obsługiwane Scope',
       lastSeen: 'Ostatnio widziany',
@@ -69,19 +95,46 @@
       statusConnected: 'WS Server Connected',
       statusDisconnected: 'WS Server Disconnected',
       settings: 'Settings',
-      colTime: 'Time',
-      colType: 'Packet Type',
-      colRegion: 'Region',
-      colOrigin: 'Observer / Sender',
-      colPathLen: 'Path Length',
-      colHops: 'Path Repeaters',
-      colHash: 'Hash',
-      colCount: 'Count',
-      colHex: 'Raw Hex',
       liveTitle: 'Latest Received Live Packets',
-      liveFeed: 'Live (WebSockets)',
+      btnRefresh: 'Refresh',
+      btnPause: 'Pause',
+      btnResume: 'Resume',
+      btnFilters: 'Filters ▾',
+      btnClearFilters: '✕ Clear',
+      btnGroupHash: 'Group by hash',
+      btnHexPaths: 'Hex Paths',
+      btnDecode: 'Decode Packet',
+      phHash: 'Packet hash...',
+      phNode: 'Node...',
+      filterPlaceholder: 'Filter e.g. hash, type, node name, text message...',
+      phSearchObs: 'Search observer...',
+      obsAll: 'All Observers ▾',
+      typesAll: 'All Types ▾',
+      chanAll: 'All Channels',
+      tw15: 'Last 15 min',
+      tw30: 'Last 30 min',
+      tw60: 'Last 1 hour',
+      tw180: 'Last 3 hours',
+      tw1440: 'Last 24 hours',
+      twAll: 'All time',
+      sortObs: 'Sort: Observer',
+      sortPathAsc: 'Sort: Path ↑ (shortest)',
+      sortPathDesc: 'Sort: Path ↓ (longest)',
+      sortTimeAsc: 'Sort: Time ↑ (oldest)',
+      sortTimeDesc: 'Sort: Time ↓ (newest)',
+      colScope: 'Scope',
+      colTime: 'Time',
+      colHash: 'Hash',
+      colSize: 'Size',
+      colHB: 'HB',
+      colType: 'Type',
+      colOrigin: 'Observer / Sender',
+      colPath: 'Path',
+      colRpt: 'Count',
+      colDetails: 'Details',
       emptyTitle: 'Waiting for MeshCore packets...',
       emptyDesc: 'When packets appear in the MQTT network, they will automatically be displayed here.',
+      selectPacketPrompt: 'Select a packet from the list to view its full details.',
       nodeInfoTitle: 'Node Information',
       nodeInfoPlaceholder: 'Click a node on the map to view its attributes.',
       legendAdvert: 'Known Advert Node',
@@ -89,7 +142,6 @@
       legendFresh: '< 5 min',
       legendStale: '> 1 hour',
       settingsTitle: 'Settings & Configuration',
-      groupByHash: 'Group live packets by hash',
       mqttServersTitle: 'MQTT Servers Management',
       labelHost: 'Server Host / IP',
       labelPort: 'Port',
@@ -100,9 +152,7 @@
       dbCleanupTitle: 'Database Cleanup',
       dbCleanupDesc: 'Cleaning will remove stored packets, advert node directory, and topology edges.',
       btnClearDb: '🗑️ Clear All Topology Data',
-      noHops: 'No repeaters (Direct)',
-      btnPause: 'Pause',
-      btnResume: 'Resume',
+      noHops: 'Direct',
       btnRemove: 'Delete',
       btnDeleteNode: '🗑️ Delete Node',
       btnDeleteEdge: '✂️ Delete Connection',
@@ -113,22 +163,55 @@
       confirmDeleteNode: 'Are you sure you want to delete this node and its connections?',
       confirmDeleteEdge: 'Are you sure you want to delete this connection?',
       confirmMergeNodes: 'Are you sure you want to merge node {alias} into target node {target}?',
+      byopTitle: '📦 BYOP - Bring Your Own Packet',
+      byopDesc: 'Paste raw hex bytes from your radio or MQTT feed to perform full step-by-step decoding:',
       supportedPathSizes: 'Supported Path Prefixes',
-      supportedRegions: 'Supported Regions (Scope)',
+      supportedRegions: 'Supported Scope',
       lastSeen: 'Last Seen',
       neighborsTitle: 'Neighbor Nodes (Connections)',
       noNeighbors: 'No registered neighbors',
     }
   };
 
+  const TYPE_NAMES = {
+    0: 'REQ',
+    1: 'RESP',
+    2: 'TXT_MSG',
+    3: 'ACK',
+    4: 'ADVERT',
+    5: 'GRP_TXT',
+    7: 'LOCATION',
+    8: 'PATH',
+    9: 'TRACE',
+    11: 'CONTROL'
+  };
+
   let currentLang = localStorage.getItem('mc_analyzer_lang') || 'pl';
-  let isGroupedByHash = localStorage.getItem('mc_group_by_hash') === 'true';
+  let groupByHash = localStorage.getItem('mc_group_by_hash') !== 'false';
+  let timeWindow = parseInt(localStorage.getItem('mc_time_window') || '15', 10);
+  let showHexPaths = localStorage.getItem('mc_hex_paths') === 'true';
+  let obsSortMode = localStorage.getItem('mc_obs_sort') || 'observer';
 
-
-  let expandedClusters = new Set();
   let rawPackets = [];
+  let observers = [];
+  let observerMap = new Map();
+  let selectedObservers = new Set();
+  let selectedTypes = new Set();
+  let selectedChannel = '';
+  let filterHash = '';
+  let filterNode = '';
+  let filterNodeName = '';
+  let filterExpr = '';
+
+  let isPaused = false;
+  let pauseBuffer = [];
+  let expandedHashes = new Set();
+  let selectedPacketQuery = null;
+  let selectedObservationId = null;
+
   let brokers = [];
   let topologyData = { nodes: [], edges: [] };
+  let expandedClusters = new Set();
   let ws = null;
 
   // Vis.js Network instance
@@ -151,15 +234,36 @@
   const addBrokerForm = document.getElementById('addBrokerForm');
   const brokersList = document.getElementById('brokersList');
   const clearDbBtn = document.getElementById('clearDbBtn');
-  const groupByHashToggle = document.getElementById('groupByHashToggle');
-  const thCount = document.getElementById('thCount');
-  const packetTableBody = document.getElementById('packetTableBody');
+  const pktBody = document.getElementById('pktBody');
   const emptyState = document.getElementById('emptyState');
   const nodeInfoBox = document.getElementById('nodeInfoBox');
-  groupByHashToggle.checked = isGroupedByHash;
-  if (isGroupedByHash) {
-    thCount.classList.remove('hidden');
-  }
+  const pktRight = document.getElementById('pktRight');
+  const closeDetailBtn = document.getElementById('closeDetailBtn');
+  const pktCount = document.getElementById('pktCount');
+  const pktPauseBtn = document.getElementById('pktPauseBtn');
+  const pktRefreshBtn = document.getElementById('pktRefreshBtn');
+  const pktByopBtn = document.getElementById('pktByopBtn');
+  const byopModal = document.getElementById('byopModal');
+  const closeByopModalBtn = document.getElementById('closeByopModalBtn');
+  const byopDecodeBtn = document.getElementById('byopDecodeBtn');
+  const byopHexInput = document.getElementById('byopHexInput');
+  const byopResult = document.getElementById('byopResult');
+  const fGroup = document.getElementById('fGroup');
+  const hexHashToggle = document.getElementById('hexHashToggle');
+  const fTimeWindow = document.getElementById('fTimeWindow');
+  const fHash = document.getElementById('fHash');
+  const fNode = document.getElementById('fNode');
+  const fNodeDropdown = document.getElementById('fNodeDropdown');
+  const packetFilterInput = document.getElementById('packetFilterInput');
+  const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+  const observerTrigger = document.getElementById('observerTrigger');
+  const observerMenu = document.getElementById('observerMenu');
+  const observerList = document.getElementById('observerList');
+  const observerSearchInput = document.getElementById('observerSearchInput');
+  const typeTrigger = document.getElementById('typeTrigger');
+  const typeMenu = document.getElementById('typeMenu');
+  const fChannel = document.getElementById('fChannel');
+  const fObsSort = document.getElementById('fObsSort');
 
   // --- View Switcher ---
   tabPacketsBtn.addEventListener('click', () => switchTab('packets'));
@@ -190,18 +294,6 @@
     }
   }
 
-
-  groupByHashToggle.addEventListener('change', (e) => {
-    isGroupedByHash = e.target.checked;
-    localStorage.setItem('mc_group_by_hash', isGroupedByHash);
-    if (isGroupedByHash) {
-      thCount.classList.remove('hidden');
-    } else {
-      thCount.classList.add('hidden');
-    }
-    renderPackets();
-  });
-
   // --- Language Toggle ---
   function applyLanguage(lang) {
     currentLang = lang;
@@ -214,6 +306,20 @@
       }
     });
 
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      if (translations[lang] && translations[lang][key]) {
+        el.title = translations[lang][key];
+      }
+    });
+
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      if (translations[lang] && translations[lang][key]) {
+        el.placeholder = translations[lang][key];
+      }
+    });
+
     if (lang === 'pl') {
       langPlBtn.classList.add('active');
       langEnBtn.classList.remove('active');
@@ -222,7 +328,7 @@
       langPlBtn.classList.remove('active');
     }
 
-    renderPackets();
+    renderPacketsTable();
     renderBrokers();
   }
 
@@ -234,6 +340,264 @@
   closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
   settingsModal.addEventListener('click', (e) => {
     if (e.target === settingsModal) settingsModal.classList.add('hidden');
+  });
+
+  // --- BYOP Modal ---
+  pktByopBtn.addEventListener('click', () => byopModal.classList.remove('hidden'));
+  closeByopModalBtn.addEventListener('click', () => byopModal.classList.add('hidden'));
+  byopModal.addEventListener('click', (e) => {
+    if (e.target === byopModal) byopModal.classList.add('hidden');
+  });
+
+  byopDecodeBtn.addEventListener('click', async () => {
+    const rawHex = byopHexInput.value.trim();
+    if (!rawHex) return;
+    byopResult.innerHTML = `<p class="text-muted">Dekodowanie...</p>`;
+    try {
+      const res = await fetch('/api/decode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hex: rawHex })
+      });
+      const data = await res.json();
+      if (data.error) {
+        byopResult.innerHTML = `<p style="color:var(--accent-red); font-size:12px;">Błąd: ${escapeHtml(data.error)}</p>`;
+      } else {
+        byopResult.innerHTML = `<pre class="code-font" style="background:var(--bg-dark); padding:10px; border-radius:6px; font-size:11px; max-height:200px; overflow-y:auto; border:1px solid var(--border-color);">${escapeHtml(JSON.stringify(data.decoded, null, 2))}</pre>`;
+      }
+    } catch (err) {
+      byopResult.innerHTML = `<p style="color:var(--accent-red); font-size:12px;">Błąd połączenia: ${escapeHtml(err.message)}</p>`;
+    }
+  });
+
+  // --- Controls & Filters ---
+  fGroup.classList.toggle('active', groupByHash);
+  fGroup.addEventListener('click', () => {
+    groupByHash = !groupByHash;
+    localStorage.setItem('mc_group_by_hash', groupByHash);
+    fGroup.classList.toggle('active', groupByHash);
+    fetchPackets();
+  });
+
+  hexHashToggle.classList.toggle('active', showHexPaths);
+  hexHashToggle.addEventListener('click', () => {
+    showHexPaths = !showHexPaths;
+    localStorage.setItem('mc_hex_paths', showHexPaths);
+    hexHashToggle.classList.toggle('active', showHexPaths);
+    renderPacketsTable();
+  });
+
+  fTimeWindow.value = String(timeWindow);
+  fTimeWindow.addEventListener('change', (e) => {
+    timeWindow = parseInt(e.target.value, 10);
+    localStorage.setItem('mc_time_window', timeWindow);
+    fetchPackets();
+  });
+
+  fObsSort.value = obsSortMode;
+  fObsSort.addEventListener('change', (e) => {
+    obsSortMode = e.target.value;
+    localStorage.setItem('mc_obs_sort', obsSortMode);
+    renderPacketsTable();
+  });
+
+  pktPauseBtn.addEventListener('click', () => {
+    isPaused = !isPaused;
+    const t = translations[currentLang];
+    pktPauseBtn.classList.toggle('btn-amber', isPaused);
+    pktPauseBtn.innerHTML = isPaused ? `▶️ ${t.btnResume}` : `⏸️ ${t.btnPause}`;
+    if (!isPaused && pauseBuffer.length > 0) {
+      pauseBuffer.forEach(p => handleIncomingPacket(p));
+      pauseBuffer = [];
+    }
+  });
+
+  pktRefreshBtn.addEventListener('click', () => fetchPackets());
+
+  fHash.addEventListener('input', debounce((e) => {
+    filterHash = e.target.value.trim();
+    checkClearFiltersBtn();
+    fetchPackets();
+  }, 300));
+
+  packetFilterInput.addEventListener('input', debounce((e) => {
+    filterExpr = e.target.value.trim().toLowerCase();
+    checkClearFiltersBtn();
+    renderPacketsTable();
+  }, 300));
+
+  clearFiltersBtn.addEventListener('click', () => {
+    filterHash = '';
+    filterNode = '';
+    filterNodeName = '';
+    filterExpr = '';
+    selectedObservers.clear();
+    selectedTypes.clear();
+    selectedChannel = '';
+    fHash.value = '';
+    fNode.value = '';
+    packetFilterInput.value = '';
+    fChannel.value = '';
+    buildObserverMenu();
+    updateObserverTrigger();
+    buildTypeMenu();
+    updateTypeTrigger();
+    checkClearFiltersBtn();
+    fetchPackets();
+  });
+
+  function checkClearFiltersBtn() {
+    const hasFilter = filterHash || filterNode || filterExpr || selectedObservers.size > 0 || selectedTypes.size > 0 || selectedChannel || timeWindow !== 15;
+    clearFiltersBtn.classList.toggle('hidden', !hasFilter);
+  }
+
+  // Node Autocomplete
+  fNode.addEventListener('input', debounce(async (e) => {
+    const q = e.target.value.trim();
+    if (!q) {
+      filterNode = '';
+      filterNodeName = '';
+      fNodeDropdown.classList.add('hidden');
+      fetchPackets();
+      return;
+    }
+    try {
+      const res = await fetch(`/api/nodes/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const nodes = data.nodes || [];
+      if (nodes.length === 0) {
+        fNodeDropdown.classList.add('hidden');
+        return;
+      }
+      fNodeDropdown.innerHTML = nodes.map(n =>
+        `<div class="node-filter-option" data-id="${escapeHtml(n.id)}" data-name="${escapeHtml(n.name)}">${escapeHtml(n.name || n.id)} <span class="code-font" style="color:var(--text-muted);">(${n.id})</span></div>`
+      ).join('');
+      fNodeDropdown.classList.remove('hidden');
+      fNodeDropdown.querySelectorAll('.node-filter-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          filterNode = opt.getAttribute('data-id');
+          filterNodeName = opt.getAttribute('data-name');
+          fNode.value = filterNodeName || filterNode;
+          fNodeDropdown.classList.add('hidden');
+          checkClearFiltersBtn();
+          fetchPackets();
+        });
+      });
+    } catch (err) {}
+  }, 250));
+
+  // Multi-select Observers & Types
+  observerTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    observerMenu.classList.toggle('open');
+    typeMenu.classList.remove('open');
+  });
+
+  typeTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    typeMenu.classList.toggle('open');
+    observerMenu.classList.remove('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!observerFilterWrap.contains(e.target)) observerMenu.classList.remove('open');
+    if (!typeFilterWrap.contains(e.target)) typeMenu.classList.remove('open');
+    if (!fNodeDropdown.contains(e.target) && e.target !== fNode) fNodeDropdown.classList.add('hidden');
+  });
+
+  function buildObserverMenu() {
+    const allChecked = selectedObservers.size === 0;
+    let html = `<label class="multi-select-item"><input type="checkbox" data-obs-id="__all__" ${allChecked ? 'checked' : ''}> Wszyscy Obserwatorzy</label>`;
+    for (const o of observers) {
+      const checked = selectedObservers.has(o.id) ? 'checked' : '';
+      html += `<label class="multi-select-item" data-name="${escapeHtml((o.name || o.id).toLowerCase())}"><input type="checkbox" data-obs-id="${escapeHtml(o.id)}" ${checked}> ${escapeHtml(o.name || o.id)}</label>`;
+    }
+    observerList.innerHTML = html;
+  }
+
+  function updateObserverTrigger() {
+    const t = translations[currentLang];
+    if (selectedObservers.size === 0 || selectedObservers.size === observers.length) {
+      observerTrigger.textContent = t.obsAll;
+    } else if (selectedObservers.size === 1) {
+      const id = [...selectedObservers][0];
+      const o = observerMap.get(id);
+      observerTrigger.textContent = (o ? o.name : id) + ' ▾';
+    } else {
+      observerTrigger.textContent = selectedObservers.size + ' Obserwatorów ▾';
+    }
+  }
+
+  observerMenu.addEventListener('change', (e) => {
+    const id = e.target.getAttribute('data-obs-id');
+    if (!id) return;
+    if (id === '__all__') {
+      selectedObservers.clear();
+    } else {
+      if (e.target.checked) selectedObservers.add(id); else selectedObservers.delete(id);
+    }
+    buildObserverMenu();
+    updateObserverTrigger();
+    checkClearFiltersBtn();
+    fetchPackets();
+  });
+
+  observerSearchInput.addEventListener('input', (e) => {
+    const term = e.target.value.trim().toLowerCase();
+    observerList.querySelectorAll('.multi-select-item[data-name]').forEach(item => {
+      const name = item.getAttribute('data-name');
+      item.style.display = !term || name.includes(term) ? '' : 'none';
+    });
+  });
+
+  function buildTypeMenu() {
+    const allChecked = selectedTypes.size === 0;
+    let html = `<label class="multi-select-item"><input type="checkbox" data-type-id="__all__" ${allChecked ? 'checked' : ''}> Wszystkie Typy</label>`;
+    for (const [k, v] of Object.entries(TYPE_NAMES)) {
+      const checked = selectedTypes.has(k) ? 'checked' : '';
+      html += `<label class="multi-select-item"><input type="checkbox" data-type-id="${k}" ${checked}> ${v}</label>`;
+    }
+    typeMenu.innerHTML = html;
+  }
+
+  function updateTypeTrigger() {
+    const t = translations[currentLang];
+    if (selectedTypes.size === 0 || selectedTypes.size === Object.keys(TYPE_NAMES).length) {
+      typeTrigger.textContent = t.typesAll;
+    } else if (selectedTypes.size === 1) {
+      const k = [...selectedTypes][0];
+      typeTrigger.textContent = (TYPE_NAMES[k] || k) + ' ▾';
+    } else {
+      typeTrigger.textContent = selectedTypes.size + ' Typy ▾';
+    }
+  }
+
+  typeMenu.addEventListener('change', (e) => {
+    const id = e.target.getAttribute('data-type-id');
+    if (!id) return;
+    if (id === '__all__') {
+      selectedTypes.clear();
+    } else {
+      if (e.target.checked) selectedTypes.add(id); else selectedTypes.delete(id);
+    }
+    buildTypeMenu();
+    updateTypeTrigger();
+    checkClearFiltersBtn();
+    fetchPackets();
+  });
+
+  fChannel.addEventListener('change', (e) => {
+    selectedChannel = e.target.value;
+    checkClearFiltersBtn();
+    fetchPackets();
+  });
+
+  closeDetailBtn.addEventListener('click', () => {
+    const layout = document.querySelector('.split-layout');
+    layout.classList.add('detail-collapsed');
+    selectedPacketQuery = null;
+    selectedObservationId = null;
+    renderPacketsTable();
   });
 
   addBrokerForm.addEventListener('submit', (e) => {
@@ -271,19 +635,7 @@
     }
   });
 
-  function removeBroker(id) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'remove_broker', id: id }));
-    }
-  }
-
-  function toggleBroker(id, enabled) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'toggle_broker', id: id, enabled: enabled }));
-    }
-  }
-
-  // --- WebSocket Setup ---
+  // --- WebSocket Connection ---
   function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -294,6 +646,8 @@
 
     ws.onopen = () => {
       updateStatus('connected');
+      fetchObservers();
+      fetchPackets();
     };
 
     ws.onmessage = (event) => {
@@ -303,10 +657,6 @@
           if (msg.brokers) {
             brokers = msg.brokers || [];
             renderBrokers();
-          }
-          if (msg.packets && msg.packets.length > 0) {
-            rawPackets = msg.packets.reverse();
-            renderPackets();
           }
           if (msg.topology) {
             topologyData = msg.topology;
@@ -327,7 +677,7 @@
         } else if (msg.type === 'cleared') {
           rawPackets = [];
           topologyData = { nodes: [], edges: [] };
-          renderPackets();
+          renderPacketsTable();
           updateVisTopology(topologyData);
         }
       } catch (err) {
@@ -358,114 +708,338 @@
   }
 
   function handleIncomingPacket(pkt) {
-    rawPackets.unshift(pkt);
-    if (rawPackets.length > 200) {
-      rawPackets.pop();
+    if (isPaused) {
+      pauseBuffer.push(pkt);
+      return;
     }
-    renderPackets(pkt.hash || pkt.timestamp);
-    animatePacketPath(pkt);
+    rawPackets.unshift(pkt);
+    if (rawPackets.length > 500) rawPackets.pop();
+    renderPacketsTable();
   }
 
-  function getGroupedPackets() {
-    const map = new Map();
+  // --- Fetch Packets & Observers from REST API ---
+  async function fetchObservers() {
+    try {
+      const res = await fetch('/api/observers');
+      const data = await res.json();
+      observers = data.observers || [];
+      observerMap = new Map(observers.map(o => [o.id, o]));
+      buildObserverMenu();
+      updateObserverTrigger();
+    } catch (err) {}
+  }
 
-    for (const p of rawPackets) {
+  async function fetchPackets() {
+    try {
+      let url = `/api/packets?limit=200&groupByHash=${groupByHash}`;
+      if (timeWindow > 0) {
+        const since = new Date(Date.now() - timeWindow * 60000).toISOString();
+        url += `&since=${encodeURIComponent(since)}`;
+      }
+      if (filterHash) url += `&hash=${encodeURIComponent(filterHash)}`;
+      if (filterNode) url += `&node=${encodeURIComponent(filterNode)}`;
+      if (selectedChannel) url += `&channel=${encodeURIComponent(selectedChannel)}`;
+      if (selectedObservers.size > 0) url += `&observer=${encodeURIComponent([...selectedObservers].join(','))}`;
+      if (selectedTypes.size > 0) url += `&type=${encodeURIComponent([...selectedTypes].join(','))}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+      rawPackets = data.packets || [];
+      renderPacketsTable();
+    } catch (err) {
+      console.error('Failed to fetch packets:', err);
+    }
+  }
+
+  // --- Group Packets by Hash ---
+  function getGroupedPackets(packetsList) {
+    const map = new Map();
+    for (const p of packetsList) {
       const key = p.hash || p.raw_hex || p.timestamp;
       if (map.has(key)) {
-        const existing = map.get(key);
-        existing.count += (p.count || 1);
-        if (p.timestamp > existing.timestamp) {
-          existing.timestamp = p.timestamp;
-          if (p.region) existing.region = p.region;
-          if (p.origin) existing.origin = p.origin;
+        const group = map.get(key);
+        group.count += 1;
+        group._children.push(p);
+        if (p.timestamp > group.latest) {
+          group.latest = p.timestamp;
+          if (p.scope_name) group.scope_name = p.scope_name;
         }
       } else {
-        map.set(key, { ...p, count: p.count || 1 });
+        map.set(key, {
+          ...p,
+          latest: p.timestamp,
+          count: 1,
+          _children: [p]
+        });
       }
     }
-
-    const grouped = Array.from(map.values()).sort((a, b) => {
-      return (b.timestamp || '').localeCompare(a.timestamp || '');
-    });
-
-    return grouped.slice(0, 20);
+    return Array.from(map.values()).sort((a, b) => (b.latest || '').localeCompare(a.latest || ''));
   }
 
-  // --- Render Functions ---
-  function renderPackets(newPktId) {
+  // --- Render Packets Table ---
+  function renderPacketsTable() {
     const t = translations[currentLang];
-    let displayList = isGroupedByHash ? getGroupedPackets() : rawPackets.slice(0, 20);
+    let displayList = rawPackets;
+
+    if (filterExpr) {
+      displayList = displayList.filter(p => {
+        const txt = (p.raw_hex + ' ' + p.type_name + ' ' + (p.decrypted_txt || '') + ' ' + (p.channel_name || '') + ' ' + (p.origin || '') + ' ' + (p.observer || '')).toLowerCase();
+        return txt.includes(filterExpr);
+      });
+    }
+
+    if (groupByHash) {
+      displayList = getGroupedPackets(displayList);
+    }
+
+    pktCount.textContent = `(${displayList.length})`;
 
     if (displayList.length === 0) {
       emptyState.classList.remove('hidden');
-      packetTableBody.innerHTML = '';
+      pktBody.innerHTML = '';
       return;
     }
 
     emptyState.classList.add('hidden');
 
-    packetTableBody.innerHTML = displayList.map(p => {
-      const isNew = (p.hash && p.hash === newPktId) || p.timestamp === newPktId;
-      const pathBadgeClass = `badge-path-${p.path_byte_size || 1}`;
+    pktBody.innerHTML = displayList.map(p => {
+      const isGroupHeader = groupByHash && p.count > 1;
+      const isExpanded = expandedHashes.has(p.hash);
+      const isSelected = selectedPacketQuery === (p.hash || String(p.id));
 
-      let hopsHtml = '';
-      const hopsList = p.resolved_hops && p.resolved_hops.length > 0 ? p.resolved_hops : p.hops;
+      const typeBadgeClass = getTypeBadgeClass(p.type_name);
+      const sizeBytes = p.packet_size || (p.raw_hex ? Math.floor(p.raw_hex.length / 2) : 0);
+      const hb = (p.raw_hex && p.raw_hex.length >= 4) ? ((parseInt(p.raw_hex.slice(2, 4), 16) >> 6) + 1) : 1;
 
+      let hopsList = p.resolved_hops && p.resolved_hops.length > 0 ? p.resolved_hops : p.hops;
+      let pathHtml = '';
       if (hopsList && hopsList.length > 0) {
-        const hopTags = hopsList.map(h => `<span class="hop-tag">${escapeHtml(h)}</span>`).join('<span class="hop-arrow">&rarr;</span>');
-        hopsHtml = `<div class="hops-list">${hopTags}</div>`;
+        pathHtml = hopsList.map(h => `<span class="hop-tag">${escapeHtml(h)}</span>`).join('<span class="arrow">→</span>');
       } else {
-        hopsHtml = `<span style="color:var(--text-muted);font-size:12px;">${t.noHops}</span>`;
+        pathHtml = `<span style="color:var(--text-muted); font-size:11px;">${t.noHops}</span>`;
       }
 
-      const countCol = isGroupedByHash ? `<td><span class="badge-count-occurrences">x${p.count || 1}</span></td>` : '';
-      const typeBadgeClass = getTypeBadgeClass(p.type_name);
-
-      let decodedDetails = p.raw_hex || '-';
+      let detailsHtml = p.raw_hex || '-';
       if (p.channel_name && p.decrypted_txt) {
         const senderStr = p.sender ? `[${escapeHtml(p.sender)}]: ` : '';
-        decodedDetails = `💬 <strong style="color:var(--accent-green);">[${escapeHtml(p.channel_name)}]</strong> ${senderStr}${escapeHtml(p.decrypted_txt)}`;
+        detailsHtml = `💬 <strong style="color:var(--accent-green);">[${escapeHtml(p.channel_name)}]</strong> ${senderStr}${escapeHtml(p.decrypted_txt)}`;
       } else if (p.advert_name) {
-        decodedDetails = `📢 [${escapeHtml(p.advert_name)}] ${decodedDetails}`;
+        detailsHtml = `📢 [${escapeHtml(p.advert_name)}] ${detailsHtml}`;
       } else if (p.ctrl_subtype) {
-        decodedDetails = `⚙️ ${escapeHtml(p.ctrl_subtype)} | ${decodedDetails}`;
-      } else if (p.extra_hash) {
-        decodedDetails = `🔑 CRC: ${escapeHtml(p.extra_hash)} | ${decodedDetails}`;
+        detailsHtml = `⚙️ ${escapeHtml(p.ctrl_subtype)} | ${detailsHtml}`;
       } else if (p.dest_hash && p.src_hash) {
-        decodedDetails = `↔️ ${escapeHtml(p.src_hash)} &rarr; ${escapeHtml(p.dest_hash)} | ${decodedDetails}`;
+        detailsHtml = `↔️ ${escapeHtml(p.src_hash)} → ${escapeHtml(p.dest_hash)} | ${detailsHtml}`;
       }
 
-      const scopeBadge = p.scope ? `<span class="badge-region" title="Inner Scope">${escapeHtml(p.scope)}</span>` : `<span class="badge-region">${escapeHtml(p.region || 'MESH')}</span>`;
-
-      return `
-        <tr class="packet-row ${isNew ? 'new-entry' : ''}">
-          <td class="code-font">${formatTime(p.timestamp)}</td>
-          <td><span class="badge-type ${typeBadgeClass}">${escapeHtml(p.type_name || 'DATA')}</span></td>
-          <td>${scopeBadge}</td>
-          <td style="font-weight: 500;">${escapeHtml(p.origin || p.observer || 'Unknown')}</td>
-          <td>
-            <span class="${pathBadgeClass}">
-              ${p.path_byte_size || 1}-byte (${p.hops ? p.hops.length : 0})
-            </span>
-          </td>
-          <td>${hopsHtml}</td>
-          <td class="code-font" style="color:var(--accent-blue);">${escapeHtml(p.hash || '-')}</td>
-          ${countCol}
-          <td class="code-font" style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.raw_hex || '')}">
-            ${decodedDetails}
-          </td>
+      let headerRow = `
+        <tr class="${isGroupHeader ? 'group-header' : ''} ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}" data-hash="${escapeHtml(p.hash || '')}" data-id="${p.id || ''}">
+          <td class="col-expand" style="text-align:center;">${isGroupHeader ? (isExpanded ? '▼' : '▶') : ''}</td>
+          <td class="col-region"><span class="badge-region">${escapeHtml(p.scope_name || p.region || 'MESH')}</span></td>
+          <td class="col-time code-font">${formatTime(p.latest || p.timestamp)}</td>
+          <td class="col-hash code-font" style="color:var(--accent-blue);">${escapeHtml((p.hash || '').slice(0, 8))}</td>
+          <td class="col-size code-font">${sizeBytes}B</td>
+          <td class="col-hashsize code-font">${hb}</td>
+          <td class="col-type"><span class="badge ${typeBadgeClass}">${escapeHtml(p.type_name || 'DATA')}</span></td>
+          <td class="col-observer" style="font-weight: 500;">${escapeHtml(p.origin || p.observer || 'Unknown')}</td>
+          <td class="col-path"><div class="path-hops">${pathHtml}</div></td>
+          <td class="col-rpt">${isGroupHeader ? `<span class="badge-obs">x${p.count}</span>` : '1'}</td>
+          <td class="col-details"><span class="col-details-clip" title="${escapeHtml(p.raw_hex || '')}">${detailsHtml}</span></td>
         </tr>
       `;
+
+      if (isExpanded && p._children) {
+        const childRows = p._children.map(c => {
+          const cTypeBadgeClass = getTypeBadgeClass(c.type_name);
+          const cSizeBytes = c.packet_size || (c.raw_hex ? Math.floor(c.raw_hex.length / 2) : 0);
+          let cHops = c.resolved_hops && c.resolved_hops.length > 0 ? c.resolved_hops : c.hops;
+          let cPathHtml = cHops && cHops.length > 0 ? cHops.map(h => `<span class="hop-tag">${escapeHtml(h)}</span>`).join('<span class="arrow">→</span>') : `<span style="color:var(--text-muted);">${t.noHops}</span>`;
+
+          return `
+            <tr class="group-child" data-id="${c.id}" data-hash="${escapeHtml(c.hash || '')}">
+              <td class="col-expand"></td>
+              <td class="col-region"><span class="badge-region">${escapeHtml(c.scope_name || c.region || 'MESH')}</span></td>
+              <td class="col-time code-font">${formatTime(c.timestamp)}</td>
+              <td class="col-hash code-font" style="color:var(--accent-blue);">${escapeHtml((c.hash || '').slice(0, 8))}</td>
+              <td class="col-size code-font">${cSizeBytes}B</td>
+              <td class="col-hashsize code-font">1</td>
+              <td class="col-type"><span class="badge ${cTypeBadgeClass}">${escapeHtml(c.type_name || 'DATA')}</span></td>
+              <td class="col-observer">${escapeHtml(c.origin || c.observer || 'Unknown')}</td>
+              <td class="col-path"><div class="path-hops">${cPathHtml}</div></td>
+              <td class="col-rpt">1</td>
+              <td class="col-details"><span class="col-details-clip">${escapeHtml(c.raw_hex || '')}</span></td>
+            </tr>
+          `;
+        }).join('');
+        return headerRow + childRows;
+      }
+
+      return headerRow;
     }).join('');
+
+    // Row Click Handlers
+    pktBody.querySelectorAll('tr').forEach(row => {
+      row.addEventListener('click', (e) => {
+        const hash = row.getAttribute('data-hash');
+        const id = row.getAttribute('data-id');
+        const isGroup = row.classList.contains('group-header');
+
+        if (isGroup && e.target.classList.contains('col-expand')) {
+          if (expandedHashes.has(hash)) expandedHashes.delete(hash);
+          else expandedHashes.add(hash);
+          renderPacketsTable();
+          return;
+        }
+
+        selectedPacketQuery = hash || id;
+        selectedObservationId = id;
+        openPacketDetail(selectedPacketQuery, selectedObservationId);
+        renderPacketsTable();
+      });
+    });
   }
 
   function getTypeBadgeClass(typeName) {
-    if (!typeName) return 'type-data';
-    if (typeName.includes('ADVERT')) return 'type-advert';
-    if (typeName.includes('ACK')) return 'type-ack';
-    if (typeName.includes('GRP') || typeName.includes('TXT')) return 'type-txt';
-    if (typeName.includes('LOCATION')) return 'type-location';
-    return 'type-data';
+    if (!typeName) return 'badge-data';
+    if (typeName.includes('ADVERT')) return 'badge-advert';
+    if (typeName.includes('ACK')) return 'badge-ack';
+    if (typeName.includes('GRP') || typeName.includes('TXT')) return 'badge-txt';
+    if (typeName.includes('LOCATION')) return 'badge-location';
+    return 'badge-data';
+  }
+
+  // --- Open & Render Packet Detail Sidebar ---
+  async function openPacketDetail(query, obsId) {
+    const layout = document.querySelector('.split-layout');
+    layout.classList.remove('detail-collapsed');
+    pktRight.classList.remove('empty');
+    pktRight.innerHTML = `<button type="button" class="panel-close-btn" id="closeDetailBtn">&times;</button><p class="text-muted">Ładowanie szczegółów...</p>`;
+
+    document.getElementById('closeDetailBtn').addEventListener('click', () => {
+      layout.classList.add('detail-collapsed');
+      selectedPacketQuery = null;
+    });
+
+    try {
+      const res = await fetch(`/api/packets/${encodeURIComponent(query)}`);
+      const data = await res.json();
+      const pkt = data.packet;
+      const observations = data.observations || [];
+
+      if (!pkt) {
+        pktRight.innerHTML = `<button type="button" class="panel-close-btn" id="closeDetailBtn">&times;</button><p class="text-muted">Nie znaleziono pakietu.</p>`;
+        return;
+      }
+
+      let currentObs = pkt;
+      if (obsId && observations.length > 0) {
+        const found = observations.find(o => String(o.id) === String(obsId));
+        if (found) currentObs = found;
+      }
+
+      const typeBadgeClass = getTypeBadgeClass(currentObs.type_name);
+      const hopsList = currentObs.resolved_hops && currentObs.resolved_hops.length > 0 ? currentObs.resolved_hops : currentObs.hops;
+      const pathStr = hopsList && hopsList.length > 0 ? hopsList.join(' → ') : 'Bezpośrednio';
+
+      let messageHtml = '';
+      if (currentObs.channel_name && currentObs.decrypted_txt) {
+        messageHtml = `
+          <div class="detail-message">
+            <div>💬 <strong>[${escapeHtml(currentObs.channel_name)}]</strong> ${currentObs.sender ? `[${escapeHtml(currentObs.sender)}]: ` : ''}${escapeHtml(currentObs.decrypted_txt)}</div>
+          </div>
+        `;
+      } else if (currentObs.advert_name) {
+        messageHtml = `
+          <div class="detail-message">
+            <div>📢 <strong>[${escapeHtml(currentObs.advert_name)}]</strong> ${escapeHtml(currentObs.raw_hex || '')}</div>
+          </div>
+        `;
+      }
+
+      let observationsTableHtml = '';
+      if (observations.length > 1) {
+        const obsRows = observations.map(o => `
+          <tr style="cursor:pointer;" data-obs-id="${o.id}">
+            <td>${escapeHtml(o.observer)}</td>
+            <td>${(o.hops || []).length}</td>
+            <td>${o.snr != null ? o.snr + ' dB' : '-'}</td>
+            <td>${o.rssi != null ? o.rssi + ' dBm' : '-'}</td>
+            <td class="code-font">${formatTime(o.timestamp)}</td>
+          </tr>
+        `).join('');
+
+        observationsTableHtml = `
+          <div style="margin-top:16px;">
+            <h4 style="font-size:13px; font-weight:600; margin-bottom:6px;">Obserwacje (${observations.length})</h4>
+            <table class="detail-obs-table">
+              <thead>
+                <tr>
+                  <th>Obserwator</th>
+                  <th>Hopy</th>
+                  <th>SNR</th>
+                  <th>RSSI</th>
+                  <th>Czas</th>
+                </tr>
+              </thead>
+              <tbody>${obsRows}</tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      pktRight.innerHTML = `
+        <button type="button" class="panel-close-btn" id="closeDetailBtn">&times;</button>
+        <div class="detail-title">
+          <span class="badge ${typeBadgeClass}">${escapeHtml(currentObs.type_name || 'DATA')}</span>
+          <span>${escapeHtml(currentObs.origin || currentObs.observer || 'Pakiet')}</span>
+        </div>
+        <div class="detail-hash">${escapeHtml(currentObs.hash || '-')}</div>
+        ${messageHtml}
+
+        <dl class="detail-meta">
+          <dt>Typ Pakietu</dt><dd>${escapeHtml(currentObs.type_name || 'DATA')}</dd>
+          <dt>Ścieżka</dt><dd class="code-font">${escapeHtml(pathStr)}</dd>
+          <dt>Czas</dt><dd class="code-font">${formatTime(currentObs.timestamp)}</dd>
+          <dt>Obserwator</dt><dd>${escapeHtml(currentObs.observer || '-')}</dd>
+          <dt>Scope</dt><dd><span class="badge-region">${escapeHtml(currentObs.scope_name || currentObs.region || 'MESH')}</span></dd>
+          <dt>Rozmiar</dt><dd class="code-font">${currentObs.packet_size || Math.floor((currentObs.raw_hex || '').length / 2)} B</dd>
+          <dt>SNR / RSSI</dt><dd>${currentObs.snr != null ? currentObs.snr + ' dB' : '-'} / ${currentObs.rssi != null ? currentObs.rssi + ' dBm' : '-'}</dd>
+        </dl>
+
+        <details class="detail-technical" open>
+          <summary>Podgląd Bajtów (Raw Hex)</summary>
+          <div class="hex-dump">${escapeHtml(currentObs.raw_hex || '-')}</div>
+          <table class="field-table">
+            <thead>
+              <tr><th>Offset</th><th>Pole</th><th>Wartość</th></tr>
+            </thead>
+            <tbody>
+              <tr class="section-row"><td colspan="3">Nagłówek MeshCore</td></tr>
+              <tr><td class="code-font">0</td><td>Header Byte</td><td class="code-font">0x${(currentObs.raw_hex || '').slice(0, 2)}</td></tr>
+              <tr><td class="code-font">1</td><td>Path Specifier</td><td class="code-font">0x${(currentObs.raw_hex || '').slice(2, 4)}</td></tr>
+              <tr class="section-row"><td colspan="3">Payload / Dane Hex</td></tr>
+              <tr><td class="code-font">2+</td><td>Payload Bytes</td><td class="code-font" style="word-break:break-all;">${escapeHtml((currentObs.raw_hex || '').slice(4))}</td></tr>
+            </tbody>
+          </table>
+        </details>
+
+        ${observationsTableHtml}
+      `;
+
+      document.getElementById('closeDetailBtn').addEventListener('click', () => {
+        layout.classList.add('detail-collapsed');
+        selectedPacketQuery = null;
+      });
+
+      pktRight.querySelectorAll('.detail-obs-table tr[data-obs-id]').forEach(tr => {
+        tr.addEventListener('click', () => {
+          const obsId = tr.getAttribute('data-obs-id');
+          openPacketDetail(query, obsId);
+        });
+      });
+
+    } catch (err) {
+      pktRight.innerHTML = `<button type="button" class="panel-close-btn" id="closeDetailBtn">&times;</button><p class="text-muted">Błąd ładowania szczegółów: ${escapeHtml(err.message)}</p>`;
+    }
   }
 
   function renderBrokers() {
@@ -496,7 +1070,9 @@
 
     brokersList.querySelectorAll('.btn-danger').forEach(btn => {
       btn.addEventListener('click', () => {
-        removeBroker(btn.getAttribute('data-id'));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'remove_broker', id: btn.getAttribute('data-id') }));
+        }
       });
     });
 
@@ -504,7 +1080,9 @@
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-toggle-id');
         const nextState = btn.getAttribute('data-enabled') === 'true';
-        toggleBroker(id, nextState);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'toggle_broker', id: id, enabled: nextState }));
+        }
       });
     });
   }
@@ -562,8 +1140,6 @@
     };
 
     network = new vis.Network(container, data, options);
-
-
     updateVisTopology(topologyData);
 
     network.on('click', (params) => {
@@ -584,7 +1160,6 @@
     });
   }
 
-
   function getClusterKey(node) {
     if (node.scopes && node.scopes.length > 0) {
       const sc = node.scopes[0].toUpperCase();
@@ -604,7 +1179,6 @@
     const allNodes = topo.nodes || [];
     const allEdges = topo.edges || [];
 
-    // Group nodes by shared scope region or 1-byte prefix
     const clusterMap = new Map();
     allNodes.forEach(n => {
       const key = getClusterKey(n);
@@ -674,17 +1248,14 @@
       }
     });
 
-    // Remove any nodes that are no longer part of current cluster state
     const currentVisIds = visNodes.getIds();
     const idsToRemove = currentVisIds.filter(id => !targetNodeIds.has(id));
     if (idsToRemove.length > 0) {
       visNodes.remove(idsToRemove);
     }
 
-    // Incremental update so node positions and network stability persist across packets
     visNodes.update(nodeUpdates);
 
-    // Edge bundling between cluster hubs
     const bundledEdgeMap = new Map();
     allEdges.forEach(e => {
       if (!e.source || !e.target) return;
@@ -745,24 +1316,6 @@
     visEdges.update(edgeUpdates);
   }
 
-  function animatePacketPath(pkt) {
-    if (!network || !pkt || !pkt.resolved_hops || pkt.resolved_hops.length < 2) return;
-    const hops = pkt.resolved_hops;
-
-    for (let i = 0; i < hops.length - 1; i++) {
-      const sortedPair = [hops[i], hops[i+1]].sort().join('<->');
-      const edge = visEdges.get(sortedPair);
-      if (edge) {
-        visEdges.update({ id: sortedPair, color: { color: '#f59e0b' }, width: (edge.width || 2) + 2 });
-        setTimeout(() => {
-          if (visEdges.get(sortedPair)) {
-            visEdges.update({ id: sortedPair, color: { color: edge.color.color }, width: edge.width });
-          }
-        }, 1500);
-      }
-    }
-  }
-
   function displayClusterDetails(cKey) {
     const t = translations[currentLang];
     const clusterNodes = (topologyData.nodes || []).filter(n => getClusterKey(n) === cKey);
@@ -803,7 +1356,6 @@
     const pathSizesText = (node.path_sizes || [2]).map(s => `${s}-byte`).join(', ');
     const scopesText = (node.scopes || []).join(', ') || 'Global / MESH';
 
-    // Find all neighbor nodes connected via topology edges
     const neighborIds = new Set();
     (topologyData.edges || []).forEach(e => {
       if (e.source === nodeId) neighborIds.add(e.target);
@@ -822,7 +1374,6 @@
       neighborsHtml = `<p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${t.noNeighbors}</p>`;
     }
 
-    // Prepare deduplication candidate options for merging (only nodes sharing the same prefix start)
     const candidates = (topologyData.nodes || []).filter(n => n.id !== node.id && n.id.length > node.id.length && n.id.startsWith(node.id));
     let mergeSectionHtml = '';
     if (node.id.length <= 4) {
@@ -846,7 +1397,7 @@
 
         <div class="detail-field">
           <span class="detail-label">${t.supportedPathSizes}:</span>
-          <span class="badge-path-2">${escapeHtml(pathSizesText)}</span>
+          <span class="badge-region">${escapeHtml(pathSizesText)}</span>
         </div>
 
         <div class="detail-field">
@@ -923,7 +1474,7 @@
     if (!lastSeenIso) return false;
     try {
       const diffMs = Date.now() - new Date(lastSeenIso).getTime();
-      return diffMs < 5 * 60 * 1000; // 5 minutes
+      return diffMs < 5 * 60 * 1000;
     } catch {
       return false;
     }
@@ -946,6 +1497,14 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  function debounce(func, wait) {
+    let timeout;
+    return function (...args) {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
   }
 
   // --- Initial Start ---

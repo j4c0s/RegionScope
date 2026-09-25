@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -87,13 +88,22 @@ func (s *Storage) initSchema() error {
 		region TEXT,
 		observer TEXT,
 		origin TEXT,
+		scope_name TEXT DEFAULT '',
+		route_type INTEGER DEFAULT 0,
 		payload_type INTEGER,
 		type_name TEXT,
 		path_byte_size INTEGER,
 		hops_json TEXT,
 		resolved_hops_json TEXT,
 		hash TEXT,
-		raw_hex TEXT
+		raw_hex TEXT,
+		packet_size INTEGER DEFAULT 0,
+		snr REAL,
+		rssi INTEGER,
+		channel_name TEXT DEFAULT '',
+		decrypted_txt TEXT DEFAULT '',
+		sender TEXT DEFAULT '',
+		decoded_json TEXT DEFAULT ''
 	);
 	`
 	_, err := s.db.Exec(schema)
@@ -188,10 +198,20 @@ func (s *Storage) RecordPacket(pkt *packet.ParsedPacket) {
 	hopsJson, _ := json.Marshal(pkt.Hops)
 	resolvedHopsJson, _ := json.Marshal(pkt.ResolvedHops)
 
-	_, _ = s.db.Exec(`
-		INSERT INTO packets (timestamp, region, observer, origin, payload_type, type_name, path_byte_size, hops_json, resolved_hops_json, hash, raw_hex)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, pkt.Timestamp, pkt.Region, pkt.Observer, pkt.Origin, pkt.PayloadType, pkt.TypeName, pkt.PathByteSize, string(hopsJson), string(resolvedHopsJson), pkt.Hash, pkt.RawHex)
+	res, err := s.db.Exec(`
+		INSERT INTO packets (
+			timestamp, region, observer, origin, scope_name, route_type,
+			payload_type, type_name, path_byte_size, hops_json, resolved_hops_json,
+			hash, raw_hex, packet_size, snr, rssi, channel_name, decrypted_txt, sender, decoded_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, pkt.Timestamp, pkt.Region, pkt.Observer, pkt.Origin, pkt.ScopeName, pkt.RouteType,
+		pkt.PayloadType, pkt.TypeName, pkt.PathByteSize, string(hopsJson), string(resolvedHopsJson),
+		pkt.Hash, pkt.RawHex, pkt.PacketSize, pkt.SNR, pkt.RSSI, pkt.ChannelName, pkt.DecryptedTxt, pkt.Sender, pkt.DecodedJSON)
+	if err == nil {
+		if lastID, err := res.LastInsertId(); err == nil {
+			pkt.ID = lastID
+		}
+	}
 }
 
 func (s *Storage) resolvePrefixLocked(prefix string, neighbors []string) string {
@@ -407,6 +427,277 @@ func containsStr(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+type PacketQueryParams struct {
+	Since       string
+	Limit       int
+	Region      string
+	Observer    string
+	Node        string
+	Channel     string
+	Type        string
+	Hash        string
+	GroupByHash bool
+}
+
+type PacketGroup struct {
+	Hash             string                `json:"hash"`
+	Count            int                   `json:"count"`
+	ObservationCount int                   `json:"observation_count"`
+	ObserverCount    int                   `json:"observer_count"`
+	Latest           string                `json:"latest"`
+	Observer         string                `json:"observer"`
+	ObserverID       string                `json:"observer_id"`
+	ObserverName     string                `json:"observer_name"`
+	PathJSON         string                `json:"path_json"`
+	PayloadType      byte                  `json:"payload_type"`
+	TypeName         string                `json:"type_name"`
+	RouteType        int                   `json:"route_type"`
+	RawHex           string                `json:"raw_hex"`
+	DecodedJSON      string                `json:"decoded_json,omitempty"`
+	ScopeName        string                `json:"scope_name,omitempty"`
+	DistinctIATAs    []string              `json:"distinct_iatas,omitempty"`
+	Children         []*packet.ParsedPacket `json:"_children,omitempty"`
+}
+
+func (s *Storage) QueryPackets(params PacketQueryParams) ([]*packet.ParsedPacket, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var conditions []string
+	var args []interface{}
+
+	if params.Hash != "" {
+		conditions = append(conditions, "hash = ?")
+		args = append(args, strings.ToUpper(params.Hash))
+	} else {
+		if params.Since != "" {
+			conditions = append(conditions, "timestamp >= ?")
+			args = append(args, params.Since)
+		}
+		if params.Region != "" {
+			regs := strings.Split(params.Region, ",")
+			var regConds []string
+			for _, r := range regs {
+				regConds = append(regConds, "region = ?")
+				args = append(args, strings.ToUpper(strings.TrimSpace(r)))
+			}
+			if len(regConds) > 0 {
+				conditions = append(conditions, "("+strings.Join(regConds, " OR ")+")")
+			}
+		}
+		if params.Observer != "" {
+			obsList := strings.Split(params.Observer, ",")
+			var obsConds []string
+			for _, o := range obsList {
+				obsConds = append(obsConds, "observer = ?")
+				args = append(args, strings.TrimSpace(o))
+			}
+			if len(obsConds) > 0 {
+				conditions = append(conditions, "("+strings.Join(obsConds, " OR ")+")")
+			}
+		}
+		if params.Node != "" {
+			nodeLike := "%" + strings.TrimSpace(params.Node) + "%"
+			conditions = append(conditions, "(hops_json LIKE ? OR resolved_hops_json LIKE ? OR origin LIKE ? OR decoded_json LIKE ?)")
+			args = append(args, nodeLike, nodeLike, nodeLike, nodeLike)
+		}
+		if params.Channel != "" {
+			conditions = append(conditions, "(channel_name = ? OR raw_hex LIKE ?)")
+			args = append(args, params.Channel, "%"+params.Channel+"%")
+		}
+		if params.Type != "" {
+			types := strings.Split(params.Type, ",")
+			var typeConds []string
+			for _, tStr := range types {
+				if tInt, err := strconv.Atoi(strings.TrimSpace(tStr)); err == nil {
+					typeConds = append(typeConds, "payload_type = ?")
+					args = append(args, tInt)
+				}
+			}
+			if len(typeConds) > 0 {
+				conditions = append(conditions, "("+strings.Join(typeConds, " OR ")+")")
+			}
+		}
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, timestamp, region, observer, origin, scope_name, route_type,
+		       payload_type, type_name, path_byte_size, hops_json, resolved_hops_json,
+		       hash, raw_hex, packet_size, snr, rssi, channel_name, decrypted_txt, sender, decoded_json
+		FROM packets
+		%s
+		ORDER BY id DESC
+		LIMIT %d
+	`, whereClause, limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var packets []*packet.ParsedPacket
+	for rows.Next() {
+		var p packet.ParsedPacket
+		var hopsJson, resHopsJson string
+		var snr sql.NullFloat64
+		var rssi sql.NullInt64
+
+		err := rows.Scan(
+			&p.ID, &p.Timestamp, &p.Region, &p.Observer, &p.Origin, &p.ScopeName, &p.RouteType,
+			&p.PayloadType, &p.TypeName, &p.PathByteSize, &hopsJson, &resHopsJson,
+			&p.Hash, &p.RawHex, &p.PacketSize, &snr, &rssi, &p.ChannelName, &p.DecryptedTxt, &p.Sender, &p.DecodedJSON,
+		)
+		if err != nil {
+			continue
+		}
+
+		if snr.Valid {
+			p.SNR = &snr.Float64
+		}
+		if rssi.Valid {
+			rInt := int(rssi.Int64)
+			p.RSSI = &rInt
+		}
+		p.Scope = p.ScopeName
+		_ = json.Unmarshal([]byte(hopsJson), &p.Hops)
+		_ = json.Unmarshal([]byte(resHopsJson), &p.ResolvedHops)
+		p.HopCount = len(p.Hops)
+		p.PathCount = p.HopCount
+
+		packets = append(packets, &p)
+	}
+
+	return packets, len(packets), nil
+}
+
+func (s *Storage) GetPacketByHashOrID(query string) (*packet.ParsedPacket, []*packet.ParsedPacket, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var basePkt *packet.ParsedPacket
+	var observations []*packet.ParsedPacket
+
+	rows, err := s.db.Query(`
+		SELECT id, timestamp, region, observer, origin, scope_name, route_type,
+		       payload_type, type_name, path_byte_size, hops_json, resolved_hops_json,
+		       hash, raw_hex, packet_size, snr, rssi, channel_name, decrypted_txt, sender, decoded_json
+		FROM packets
+		WHERE hash = ? OR id = ?
+		ORDER BY id DESC
+	`, strings.ToUpper(query), query)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p packet.ParsedPacket
+		var hopsJson, resHopsJson string
+		var snr sql.NullFloat64
+		var rssi sql.NullInt64
+
+		err := rows.Scan(
+			&p.ID, &p.Timestamp, &p.Region, &p.Observer, &p.Origin, &p.ScopeName, &p.RouteType,
+			&p.PayloadType, &p.TypeName, &p.PathByteSize, &hopsJson, &resHopsJson,
+			&p.Hash, &p.RawHex, &p.PacketSize, &snr, &rssi, &p.ChannelName, &p.DecryptedTxt, &p.Sender, &p.DecodedJSON,
+		)
+		if err != nil {
+			continue
+		}
+
+		if snr.Valid {
+			p.SNR = &snr.Float64
+		}
+		if rssi.Valid {
+			rInt := int(rssi.Int64)
+			p.RSSI = &rInt
+		}
+		p.Scope = p.ScopeName
+		_ = json.Unmarshal([]byte(hopsJson), &p.Hops)
+		_ = json.Unmarshal([]byte(resHopsJson), &p.ResolvedHops)
+		p.HopCount = len(p.Hops)
+		p.PathCount = p.HopCount
+
+		if basePkt == nil {
+			cp := p
+			basePkt = &cp
+		}
+		cpObs := p
+		observations = append(observations, &cpObs)
+	}
+
+	if basePkt == nil {
+		return nil, nil, fmt.Errorf("packet not found")
+	}
+
+	return basePkt, observations, nil
+}
+
+type ObserverInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	IATA string `json:"iata"`
+}
+
+func (s *Storage) GetObservers() ([]*ObserverInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query("SELECT DISTINCT observer, region FROM packets WHERE observer != ''")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var observers []*ObserverInfo
+	for rows.Next() {
+		var obs, reg string
+		if err := rows.Scan(&obs, &reg); err == nil && obs != "" {
+			observers = append(observers, &ObserverInfo{
+				ID:   obs,
+				Name: obs,
+				IATA: reg,
+			})
+		}
+	}
+	return observers, nil
+}
+
+func (s *Storage) SearchNodes(query string) ([]*Node, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	qLike := "%" + strings.TrimSpace(query) + "%"
+	rows, err := s.db.Query("SELECT id, name, last_seen, lat, lon, scopes_json, path_sizes_json FROM nodes WHERE id LIKE ? OR name LIKE ? ORDER BY last_seen DESC LIMIT 20", qLike, qLike)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []*Node
+	for rows.Next() {
+		var n Node
+		var scopesJson, pathSizesJson string
+		if err := rows.Scan(&n.ID, &n.Name, &n.LastSeen, &n.Lat, &n.Lon, &scopesJson, &pathSizesJson); err == nil {
+			_ = json.Unmarshal([]byte(scopesJson), &n.Scopes)
+			_ = json.Unmarshal([]byte(pathSizesJson), &n.PathSizes)
+			nodes = append(nodes, &n)
+		}
+	}
+	return nodes, nil
 }
 
 func (s *Storage) DeleteNode(id string) error {

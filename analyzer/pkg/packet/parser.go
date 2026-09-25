@@ -53,11 +53,13 @@ func GetPayloadTypeName(pType byte) string {
 
 // ParsedPacket represents a processed MeshCore packet with rich decoded fields.
 type ParsedPacket struct {
+	ID           int64    `json:"id,omitempty"`
 	Timestamp    string   `json:"timestamp"`
 	Region       string   `json:"region"`
 	Observer     string   `json:"observer"`
 	Origin       string   `json:"origin"`
 	Scope        string   `json:"scope,omitempty"`
+	ScopeName    string   `json:"scope_name,omitempty"`
 	RouteType    int      `json:"route_type"`
 	PathByteSize int      `json:"path_byte_size"`
 	PathCount    int      `json:"path_count"`
@@ -68,6 +70,9 @@ type ParsedPacket struct {
 	TypeName     string   `json:"type_name"`
 	Hash         string   `json:"hash"`
 	RawHex       string   `json:"raw_hex"`
+	PacketSize   int      `json:"packet_size"`
+	SNR          *float64 `json:"snr,omitempty"`
+	RSSI         *int     `json:"rssi,omitempty"`
 	AdvertName   string   `json:"advert_name,omitempty"`
 	AdvertKey    string   `json:"advert_key,omitempty"`
 	Lat          float64  `json:"lat,omitempty"`
@@ -81,6 +86,7 @@ type ParsedPacket struct {
 	SrcHash      string   `json:"src_hash,omitempty"`
 	MAC          string   `json:"mac,omitempty"`
 	ExtraHash    string   `json:"extra_hash,omitempty"`
+	DecodedJSON  string   `json:"decoded_json,omitempty"`
 }
 
 // ParseMeshCorePacket extracts packet path byte size, payload type, repeater hops, and details from an MQTT message.
@@ -146,6 +152,7 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 
 			if sc, ok := jsonMap["scope"].(string); ok && sc != "" {
 				parsed.Scope = strings.ToUpper(sc)
+				parsed.ScopeName = parsed.Scope
 				if strings.ToUpper(sc) != "MESH" && strings.ToUpper(sc) != "GLOBAL" {
 					parsed.Region = strings.ToUpper(sc)
 				}
@@ -153,6 +160,14 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 				if strings.ToUpper(rg) != "MESH" && strings.ToUpper(rg) != "GLOBAL" {
 					parsed.Region = strings.ToUpper(rg)
 				}
+			}
+
+			if snrVal, ok := jsonMap["snr"].(float64); ok {
+				parsed.SNR = &snrVal
+			}
+			if rssiVal, ok := jsonMap["rssi"].(float64); ok {
+				rssiInt := int(rssiVal)
+				parsed.RSSI = &rssiInt
 			}
 		}
 	} else {
@@ -173,6 +188,7 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	}
 
 	parsed.RawHex = strings.ToUpper(rawHex)
+	parsed.PacketSize = len(buf)
 
 	// Header Byte 0: payloadType = (header >> 2) & 0x0F, routeType = header & 0x03
 	headerByte := buf[0]
@@ -260,6 +276,41 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		parsed.Region = "POZ"
 	} else if isIeg {
 		parsed.Region = "IEG"
+	}
+
+	if parsed.ScopeName == "" {
+		parsed.ScopeName = parsed.Scope
+	}
+
+	// Build a decoded JSON summary map for CoreScope parity
+	decodedMap := map[string]interface{}{
+		"type": parsed.TypeName,
+	}
+	if parsed.AdvertName != "" {
+		decodedMap["type"] = "ADVERT"
+		decodedMap["name"] = parsed.AdvertName
+		if parsed.AdvertKey != "" {
+			decodedMap["pubKey"] = parsed.AdvertKey
+		}
+		if parsed.Lat != 0 || parsed.Lon != 0 {
+			decodedMap["lat"] = parsed.Lat
+			decodedMap["lon"] = parsed.Lon
+		}
+	} else if parsed.ChannelName != "" && parsed.DecryptedTxt != "" {
+		decodedMap["type"] = "CHAN"
+		decodedMap["channel"] = parsed.ChannelName
+		decodedMap["sender"] = parsed.Sender
+		decodedMap["text"] = parsed.DecryptedTxt
+	} else if parsed.CtrlSubtype != "" {
+		decodedMap["type"] = "CONTROL"
+		decodedMap["ctrlSubtype"] = parsed.CtrlSubtype
+	} else if parsed.DestHash != "" && parsed.SrcHash != "" {
+		decodedMap["type"] = parsed.TypeName
+		decodedMap["destHash"] = parsed.DestHash
+		decodedMap["srcHash"] = parsed.SrcHash
+	}
+	if dj, err := json.Marshal(decodedMap); err == nil {
+		parsed.DecodedJSON = string(dj)
 	}
 
 	return parsed, nil
