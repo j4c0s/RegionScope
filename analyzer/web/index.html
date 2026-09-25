@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeshCore MQTT Packet Analyzer & Topology</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Vis-Network for Topology Graph -->
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header / Navbar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="logo-icon">📡</div>
+        <div>
+          <h1 class="nav-title">MeshCore Analyzer</h1>
+          <p class="nav-subtitle" data-i18n="subtitle">Nasłuchiwanie MQTT & Analiza Topologii</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button type="button" class="tab-btn active" id="tabPacketsBtn" data-i18n="tabPackets">📡 Pakiety Live</button>
+        <button type="button" class="tab-btn" id="tabTopologyBtn" data-i18n="tabTopology">🗺️ Mapa Topologii</button>
+      </nav>
+
+      <div class="nav-actions">
+        <!-- Status Indicator -->
+        <div class="status-indicator" id="statusBadge">
+          <span class="status-dot disconnected" id="statusDot"></span>
+          <span id="statusText" data-i18n="statusConnecting">Łączenie z serwerem...</span>
+        </div>
+
+        <!-- Settings Button -->
+        <button type="button" class="btn btn-secondary" id="openSettingsModalBtn">
+          <span>⚙️</span> <span data-i18n="settings">Ustawienia</span>
+        </button>
+
+        <!-- Language Toggle -->
+        <div class="lang-toggle">
+          <button type="button" class="lang-btn active" id="langPlBtn">PL</button>
+          <button type="button" class="lang-btn" id="langEnBtn">EN</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Packets View -->
+      <section id="packetsView" class="view-section active">
+        <div class="table-container">
+          <div class="table-header">
+            <h2 data-i18n="liveTitle">Ostatnie Odebrane Pakiety Live</h2>
+            <div class="table-actions">
+              <div class="live-indicator">
+                <span class="live-dot"></span> <span data-i18n="liveFeed">Na żywo (WebSockets)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="table-wrapper">
+            <table class="packet-table" id="packetTable">
+              <thead>
+                <tr>
+                  <th style="width: 100px;" data-i18n="colTime">Czas</th>
+                  <th style="width: 110px;" data-i18n="colType">Typ Pakietu</th>
+                  <th style="width: 90px;" data-i18n="colRegion">Scope</th>
+                  <th style="width: 140px;" data-i18n="colOrigin">Obserwator / Nadawca</th>
+                  <th style="width: 120px;" data-i18n="colPathLen">Długość ścieżki</th>
+                  <th data-i18n="colHops">Repeatery w Ścieżce</th>
+                  <th style="width: 110px;" data-i18n="colHash">Hash</th>
+                  <th style="width: 80px;" id="thCount" class="hidden" data-i18n="colCount">Ilość</th>
+                  <th data-i18n="colHex">Raw Hex</th>
+                </tr>
+              </thead>
+              <tbody id="packetTableBody">
+                <!-- Empty state initially -->
+              </tbody>
+            </table>
+
+            <div class="empty-state" id="emptyState">
+              <div class="empty-icon">📻</div>
+              <h3 data-i18n="emptyTitle">Oczekiwanie na pakiety MeshCore...</h3>
+              <p data-i18n="emptyDesc">Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Topology View -->
+      <section id="topologyView" class="view-section hidden">
+        <div class="topology-container">
+          <div class="topology-sidebar">
+            <h3 data-i18n="nodeInfoTitle">Informacje o Węźle</h3>
+            <div id="nodeInfoBox" class="node-info-box">
+              <p class="text-muted" data-i18n="nodeInfoPlaceholder">Kliknij węzeł na mapie, aby zobaczyć jego właściwości.</p>
+            </div>
+          </div>
+
+          <div class="topology-graph-wrapper">
+            <div id="topologyNetwork" class="topology-network"></div>
+            <div class="graph-legend">
+              <div class="legend-item"><span class="legend-color node-known"></span> <span data-i18n="legendAdvert">Known Advert Node</span></div>
+              <div class="legend-item"><span class="legend-color node-hop"></span> <span data-i18n="legendHop">Hop Node</span></div>
+              <div class="legend-item"><span class="legend-color edge-fresh"></span> <span data-i18n="legendFresh">&lt; 5 min</span></div>
+              <div class="legend-item"><span class="legend-color edge-stale"></span> <span data-i18n="legendStale">&gt; 1 godz.</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>MeshCore Packet Path Analyzer &bull; Topology Mapper</p>
+    </footer>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 data-i18n="settingsTitle">Ustawienia i Konfiguracja</h3>
+        <button type="button" class="modal-close" id="closeSettingsModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Display Toggles -->
+        <div class="form-group">
+          <label class="toggle-control">
+            <input type="checkbox" id="groupByHashToggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label" data-i18n="groupByHash">Grupuj pakiety live po hashu</span>
+          </label>
+        </div>
+
+        <hr class="modal-divider">
+
+        <!-- MQTT Servers Section -->
+        <h4 data-i18n="mqttServersTitle">Zarządzanie Serwerami MQTT</h4>
+        <form id="addBrokerForm" class="broker-form" style="margin-top: 10px;">
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="inputHost" data-i18n="labelHost">Adres serwera (Host / IP)</label>
+              <input type="text" id="inputHost" placeholder="mqtt.marwoj.net" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="inputPort" data-i18n="labelPort">Port</label>
+              <input type="number" id="inputPort" placeholder="1883" value="1883" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="inputUser" data-i18n="labelUser">Użytkownik (opcjonalnie)</label>
+              <input type="text" id="inputUser" placeholder="username">
+            </div>
+            <div class="form-group flex-1">
+              <label for="inputPass" data-i18n="labelPass">Hasło (opcjonalnie)</label>
+              <input type="password" id="inputPass" placeholder="••••••••">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="inputTopic" data-i18n="labelTopic">Temat MQTT (Topic)</label>
+            <input type="text" id="inputTopic" placeholder="meshcore/#" value="meshcore/#" required>
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width: 100%;" data-i18n="btnAddServer">Połącz i Dodaj Serwer</button>
+        </form>
+
+        <div id="brokersList" class="brokers-list" style="margin-top: 14px;">
+          <!-- Active broker items -->
+        </div>
+
+        <hr class="modal-divider">
+
+        <!-- Database Cleanup -->
+        <h4 data-i18n="dbCleanupTitle">Zarządzanie Bazą Danych</h4>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="dbCleanupDesc">Czyszczenie usunie zapisane pakiety, słownik węzłów z Advertów oraz krawędzie topologii.</p>
+        <button type="button" class="btn btn-danger" id="clearDbBtn" style="width: 100%;" data-i18n="btnClearDb">🗑️ Wyczyść Wszystkie Dane Topologii</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

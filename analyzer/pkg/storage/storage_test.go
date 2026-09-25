@@ -1,0 +1,124 @@
+package storage
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/corescope/analyzer/pkg/packet"
+)
+
+func TestStoragePrefixNeighborMatching(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	store, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Seed full 3B nodes into database: 671AC0, 681AC0, 691AC0, 701AC0
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"671AC0", "681AC0"},
+	})
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"671AC0", "691AC0"},
+	})
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"671AC0", "701AC0"},
+	})
+
+	// 2. Test 2B prefix matching (requires >= 2 matching neighbors)
+	pkt2B := &packet.ParsedPacket{
+		PathByteSize: 2,
+		Hops:         []string{"671A", "681A"},
+	}
+	store.RecordPacket(pkt2B)
+
+	if pkt2B.ResolvedHops[0] != "671AC0" {
+		t.Errorf("Expected 2B prefix '671A' to resolve to '671AC0', got '%s'", pkt2B.ResolvedHops[0])
+	}
+
+	// 3. Test 1B prefix matching (requires >= 3 matching neighbors)
+	pkt1B := &packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"681A", "67", "691A"}, // "67" surrounded by 681A and 691A, but needs 3 matching
+		Observer:     "701AC0",                       // 3rd neighbor is 701AC0
+	}
+	store.RecordPacket(pkt1B)
+
+	if pkt1B.ResolvedHops[1] != "671AC0" {
+		t.Errorf("Expected 1B prefix '67' to resolve to '671AC0' with 3 matching neighbors, got '%s'", pkt1B.ResolvedHops[1])
+	}
+}
+
+func TestStorageSequencePathMerging(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	store, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Seed 3B nodes 6EFA10 and 5C1A20 into database
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"6EFA10", "5C1A20"},
+	})
+
+	// 2. Process 1B path packet with sequence "6E" -> "5C"
+	pkt1BSeq := &packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"6E", "5C"},
+	}
+	store.RecordPacket(pkt1BSeq)
+
+	if pkt1BSeq.ResolvedHops[0] != "6EFA10" {
+		t.Errorf("Expected 1B prefix '6E' to resolve to '6EFA10', got '%s'", pkt1BSeq.ResolvedHops[0])
+	}
+	if pkt1BSeq.ResolvedHops[1] != "5C1A20" {
+		t.Errorf("Expected 1B prefix '5C' to resolve to '5C1A20', got '%s'", pkt1BSeq.ResolvedHops[1])
+	}
+}
+
+func TestStorageManualNodeMerging(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	store, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer store.Close()
+
+	// Seed node A1 (1B) and node A1B2C3 (3B)
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"A1", "B2"},
+	})
+	store.RecordPacket(&packet.ParsedPacket{
+		PathByteSize: 3,
+		Hops:         []string{"A1B2C3", "D4E5F6"},
+	})
+
+	// Manually merge node "A1" into "A1B2C3"
+	if err := store.MergeNodes("A1", "A1B2C3"); err != nil {
+		t.Fatalf("MergeNodes failed: %v", err)
+	}
+
+	// Verify new packet with hop "A1" resolves directly to "A1B2C3"
+	pkt := &packet.ParsedPacket{
+		PathByteSize: 1,
+		Hops:         []string{"A1"},
+	}
+	store.RecordPacket(pkt)
+
+	if pkt.ResolvedHops[0] != "A1B2C3" {
+		t.Errorf("Expected aliased node 'A1' to resolve to 'A1B2C3', got '%s'", pkt.ResolvedHops[0])
+	}
+}
