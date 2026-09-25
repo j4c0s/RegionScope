@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MeshCore MQTT Packet Analyzer & Topology</title>
+  <title>MeshCore MQTT Packet Analyzer & Parity Scope</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -52,42 +52,119 @@
     <main class="main-content">
       <!-- Packets View -->
       <section id="packetsView" class="view-section active">
-        <div class="table-container">
-          <div class="table-header">
-            <h2 data-i18n="liveTitle">Ostatnie Odebrane Pakiety Live</h2>
-            <div class="table-actions">
-              <div class="live-indicator">
-                <span class="live-dot"></span> <span data-i18n="liveFeed">Na żywo (WebSockets)</span>
+        <div class="split-layout detail-collapsed">
+          <div class="panel-left" id="pktLeft">
+            <div class="page-header">
+              <h2><span data-i18n="liveTitle">Ostatnie Odebrane Pakiety Live</span> <span class="count" id="pktCount">(0)</span></h2>
+              <div class="action-buttons">
+                <button type="button" class="btn btn-secondary btn-icon" id="pktRefreshBtn" title="Odśwież" data-i18n-title="refresh">🔄 <span data-i18n="btnRefresh">Odśwież</span></button>
+                <button type="button" class="btn btn-secondary btn-icon" id="pktPauseBtn" title="Pauza na żywo" data-i18n-title="pause">⏸️ <span data-i18n="btnPause">Pauza</span></button>
+                <button type="button" class="btn btn-primary btn-icon" id="pktByopBtn" title="Analiza własnego pakietu" data-i18n-title="byopTitle">📦 BYOP</button>
+              </div>
+            </div>
+
+            <!-- Packet Filter Expression -->
+            <div class="filter-group pkt-filter-expr">
+              <input type="text" id="packetFilterInput" class="packet-filter-input" placeholder="Filtr np: hash, typ, nazwa węzła, tekst wiadomości..." data-i18n-placeholder="filterPlaceholder" aria-label="Filtr pakietów">
+              <div id="packetFilterCount" class="filter-count-info hidden"></div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="filter-bar" id="pktFilters">
+              <button type="button" class="btn btn-secondary filter-toggle-btn" id="filterToggleBtn" data-i18n="btnFilters">Filtry ▾</button>
+
+              <div class="filter-group filter-group-clear">
+                <button type="button" class="btn btn-clear-filters hidden" id="clearFiltersBtn" data-i18n="btnClearFilters">✕ Wyczyść</button>
+              </div>
+
+              <div class="filter-group filter-group-quick">
+                <input type="text" placeholder="Hash pakietu..." data-i18n-placeholder="phHash" id="fHash" aria-label="Hash pakietu">
+                <div class="node-filter-wrap">
+                  <input type="text" placeholder="Węzeł..." data-i18n-placeholder="phNode" id="fNode" autocomplete="off" aria-label="Węzeł">
+                  <div class="node-filter-dropdown hidden" id="fNodeDropdown"></div>
+                </div>
+              </div>
+
+              <div class="filter-group filter-group-toggles">
+                <button type="button" class="btn btn-secondary active" id="fGroup" data-i18n="btnGroupHash">Grupuj po hashu</button>
+                <select id="fTimeWindow" class="filter-select" aria-label="Przedział czasowy">
+                  <option value="15" data-i18n="tw15">Ostatnie 15 min</option>
+                  <option value="30" data-i18n="tw30">Ostatnie 30 min</option>
+                  <option value="60" data-i18n="tw60">Ostatnia 1 godz.</option>
+                  <option value="180" data-i18n="tw180">Ostatnie 3 godz.</option>
+                  <option value="1440" data-i18n="tw1440">Ostatnie 24 godz.</option>
+                  <option value="0" data-i18n="twAll">Wszystkie</option>
+                </select>
+              </div>
+
+              <div class="filter-group filter-group-dropdowns">
+                <div class="multi-select-wrap" id="observerFilterWrap">
+                  <button type="button" class="multi-select-trigger" id="observerTrigger" data-i18n="obsAll">Wszyscy Obserwatorzy ▾</button>
+                  <div class="multi-select-menu" id="observerMenu">
+                    <div class="multi-select-search-wrap">
+                      <input type="text" id="observerSearchInput" class="multi-select-search" placeholder="Szukaj obserwatora..." data-i18n-placeholder="phSearchObs">
+                    </div>
+                    <div class="multi-select-list" id="observerList"></div>
+                  </div>
+                </div>
+
+                <div class="multi-select-wrap" id="typeFilterWrap">
+                  <button type="button" class="multi-select-trigger" id="typeTrigger" data-i18n="typesAll">Wszystkie Typy ▾</button>
+                  <div class="multi-select-menu" id="typeMenu"></div>
+                </div>
+
+                <select id="fChannel" class="filter-select" aria-label="Kanał">
+                  <option value="" data-i18n="chanAll">Wszystkie Kanały</option>
+                </select>
+              </div>
+
+              <div class="filter-group filter-group-sort">
+                <select id="fObsSort" aria-label="Sortowanie obserwacji">
+                  <option value="observer" data-i18n="sortObs">Sortuj: Obserwator</option>
+                  <option value="path-asc" data-i18n="sortPathAsc">Sortuj: Ścieżka ↑ (najkrótsza)</option>
+                  <option value="path-desc" data-i18n="sortPathDesc">Sortuj: Ścieżka ↓ (najdłuższa)</option>
+                  <option value="chrono-asc" data-i18n="sortTimeAsc">Sortuj: Czas ↑ (najstarszy)</option>
+                  <option value="chrono-desc" data-i18n="sortTimeDesc">Sortuj: Czas ↓ (najnowszy)</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-icon" id="hexHashToggle" data-i18n="btnHexPaths">Hex Ścieżki</button>
+              </div>
+            </div>
+
+            <!-- Table Wrapper -->
+            <div class="table-fluid-wrap">
+              <table class="data-table packet-table" id="pktTable">
+                <thead>
+                  <tr>
+                    <th scope="col" class="col-expand"></th>
+                    <th scope="col" class="col-region" data-i18n="colScope">Scope</th>
+                    <th scope="col" class="col-time" data-i18n="colTime">Czas</th>
+                    <th scope="col" class="col-hash" data-i18n="colHash">Hash</th>
+                    <th scope="col" class="col-size" data-i18n="colSize">Rozmiar</th>
+                    <th scope="col" class="col-hashsize" data-i18n="colHB">HB</th>
+                    <th scope="col" class="col-type" data-i18n="colType">Typ</th>
+                    <th scope="col" class="col-observer" data-i18n="colOrigin">Obserwator / Nadawca</th>
+                    <th scope="col" class="col-path" data-i18n="colPath">Ścieżka</th>
+                    <th scope="col" class="col-rpt" data-i18n="colRpt">Ilość</th>
+                    <th scope="col" class="col-details" data-i18n="colDetails">Szczegóły</th>
+                  </tr>
+                </thead>
+                <tbody id="pktBody">
+                  <!-- Empty state / Dynamic rows -->
+                </tbody>
+              </table>
+
+              <div class="empty-state" id="emptyState">
+                <div class="empty-icon">📻</div>
+                <h3 data-i18n="emptyTitle">Oczekiwanie na pakiety MeshCore...</h3>
+                <p data-i18n="emptyDesc">Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.</p>
               </div>
             </div>
           </div>
 
-          <!-- Table -->
-          <div class="table-wrapper">
-            <table class="packet-table" id="packetTable">
-              <thead>
-                <tr>
-                  <th style="width: 100px;" data-i18n="colTime">Czas</th>
-                  <th style="width: 110px;" data-i18n="colType">Typ Pakietu</th>
-                  <th style="width: 90px;" data-i18n="colRegion">Scope</th>
-                  <th style="width: 140px;" data-i18n="colOrigin">Obserwator / Nadawca</th>
-                  <th style="width: 120px;" data-i18n="colPathLen">Długość ścieżki</th>
-                  <th data-i18n="colHops">Repeatery w Ścieżce</th>
-                  <th style="width: 110px;" data-i18n="colHash">Hash</th>
-                  <th style="width: 80px;" id="thCount" class="hidden" data-i18n="colCount">Ilość</th>
-                  <th data-i18n="colHex">Raw Hex</th>
-                </tr>
-              </thead>
-              <tbody id="packetTableBody">
-                <!-- Empty state initially -->
-              </tbody>
-            </table>
-
-            <div class="empty-state" id="emptyState">
-              <div class="empty-icon">📻</div>
-              <h3 data-i18n="emptyTitle">Oczekiwanie na pakiety MeshCore...</h3>
-              <p data-i18n="emptyDesc">Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.</p>
-            </div>
+          <!-- Detail Sidebar / Right Panel -->
+          <div class="panel-right empty" id="pktRight">
+            <button type="button" class="panel-close-btn" id="closeDetailBtn" title="Zamknij panel">&times;</button>
+            <span data-i18n="selectPacketPrompt">Wybierz pakiet z listy, aby zobaczyć jego pełne szczegóły.</span>
           </div>
         </div>
       </section>
@@ -129,17 +206,6 @@
         <button type="button" class="modal-close" id="closeSettingsModalBtn">&times;</button>
       </div>
       <div class="modal-body">
-        <!-- Display Toggles -->
-        <div class="form-group">
-          <label class="toggle-control">
-            <input type="checkbox" id="groupByHashToggle">
-            <span class="toggle-slider"></span>
-            <span class="toggle-label" data-i18n="groupByHash">Grupuj pakiety live po hashu</span>
-          </label>
-        </div>
-
-        <hr class="modal-divider">
-
         <!-- MQTT Servers Section -->
         <h4 data-i18n="mqttServersTitle">Zarządzanie Serwerami MQTT</h4>
         <form id="addBrokerForm" class="broker-form" style="margin-top: 10px;">
@@ -183,6 +249,22 @@
         <h4 data-i18n="dbCleanupTitle">Zarządzanie Bazą Danych</h4>
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="dbCleanupDesc">Czyszczenie usunie zapisane pakiety, słownik węzłów z Advertów oraz krawędzie topologii.</p>
         <button type="button" class="btn btn-danger" id="clearDbBtn" style="width: 100%;" data-i18n="btnClearDb">🗑️ Wyczyść Wszystkie Dane Topologii</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BYOP Modal -->
+  <div class="modal-overlay hidden" id="byopModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 data-i18n="byopTitle">📦 BYOP - Analiza Własnego Pakietu</h3>
+        <button type="button" class="modal-close" id="closeByopModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="byopDesc">Wklej surowy ciąg HEX pakietu z radia lub MQTT, aby przeprowadzić pełne dekodowanie i analizę bajt po bajcie:</p>
+        <textarea id="byopHexInput" class="form-control code-font" style="width: 100%; height: 90px; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main);" placeholder="np. 15C31A8D4674FEAE37..."></textarea>
+        <button type="button" class="btn btn-primary" id="byopDecodeBtn" style="width: 100%; margin-top: 10px;" data-i18n="btnDecode">Dekoduj Pakiet</button>
+        <div id="byopResult" style="margin-top: 14px;"></div>
       </div>
     </div>
   </div>
