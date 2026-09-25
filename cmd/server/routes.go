@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/meshcore-analyzer/packetpath"
 	"github.com/meshcore-analyzer/prunequeue"
+	"golang.org/x/sync/singleflight"
 )
 
 // memBreakdownNote is the static accounting caveat attached to the opt-in
@@ -44,10 +44,28 @@ type Server struct {
 	memStatsCache    runtime.MemStats
 	memStatsCachedAt time.Time
 
+	// #2001: declared region lists for the scope_config_state field, cached
+	// so /api/nodes does not re-run the merge query pair per request. The
+	// cached map is read by concurrent requests and replaced, never mutated.
+	declaredRegionsMu    sync.Mutex
+	declaredRegionsCache map[string]declaredAnswer
+	declaredRegionsAt    time.Time
+	// Collapses the TTL-boundary herd so the query runs once, not once per
+	// in-flight request, and never under declaredRegionsMu.
+	declaredRegionsSF singleflight.Group
+	// Counts executions of that query. Read by the test that pins the cache:
+	// the enforceable perf characteristic here is "N requests, one query".
+	declaredRegionsQueries int64
+
 	// Cached /api/stats response — recomputed at most once every 10s
 	statsMu       sync.Mutex
 	statsCache    *StatsResponse
 	statsCachedAt time.Time
+	// #1910: collapses concurrent rebuilds. The cache check below releases
+	// statsMu before building the response, so every request arriving while the
+	// 10s window was expired used to rebuild it in full, each running its own DB
+	// queries against a 4-connection pool.
+	statsSF singleflight.Group
 
 	// Guards s.cfg.GeoFilter — read by ingest/handler goroutines, written by PUT handler
 	cfgMu sync.RWMutex
@@ -64,6 +82,18 @@ type Server struct {
 	scopeStatsMu       sync.Mutex
 	scopeStatsCache    map[string]*ScopeStatsResponse
 	scopeStatsCachedAt map[string]time.Time
+
+	// #1975: cached /api/scope-audit response, per window, recomputed at most
+	// once every 30s. Mirrors the scopeStats cache directly above it.
+	scopeAuditMu       sync.Mutex
+	scopeAuditCache    map[string]*ScopeAuditResponse
+	scopeAuditCachedAt map[string]time.Time
+	scopeAuditSF       singleflight.Group
+
+	// #1975: /api/scope-audit window cache and its single-flight guard, so a
+	// burst of viewers on a cold cache recomputes the network-wide scan once
+	// rather than once per request. Lives in scope_audit.go.
+	scopes scopesState
 
 	// Router reference for OpenAPI spec generation
 	router *mux.Router
@@ -230,6 +260,7 @@ func (s *Server) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/health", s.handleHealth).Methods("GET")
 	r.HandleFunc("/api/stats", s.handleStats).Methods("GET")
 	r.HandleFunc("/api/scope-stats", s.handleScopeStats).Methods("GET")
+	r.HandleFunc("/api/scope-audit", s.handleScopeAudit).Methods("GET") // #1975
 	r.HandleFunc("/api/perf", s.handlePerf).Methods("GET")
 	r.HandleFunc("/api/perf/io", s.handlePerfIO).Methods("GET")
 	r.HandleFunc("/api/perf/sqlite", s.handlePerfSqlite).Methods("GET")
@@ -254,7 +285,6 @@ func (s *Server) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/packets/timestamps", s.handlePacketTimestamps).Methods("GET")
 	r.HandleFunc("/api/packets/{id}", s.handlePacketDetail).Methods("GET")
 	r.HandleFunc("/api/packets", s.handlePackets).Methods("GET")
-	r.Handle("/api/packets", s.requireAPIKey(http.HandlerFunc(s.handlePostPacket))).Methods("POST")
 
 	// Decode endpoint
 	r.HandleFunc("/api/decode", s.handleDecode).Methods("POST")
@@ -266,6 +296,7 @@ func (s *Server) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/nodes/{pubkey}/health", s.handleNodeHealth).Methods("GET")
 	r.HandleFunc("/api/nodes/{pubkey}/paths", s.handleNodePaths).Methods("GET")
 	r.HandleFunc("/api/nodes/{pubkey}/analytics", s.handleNodeAnalytics).Methods("GET")
+	r.HandleFunc("/api/nodes/{pubkey}/hop_analytics", s.handleNodeHopAnalytics).Methods("GET")
 	r.HandleFunc("/api/nodes/{pubkey}/battery", s.handleNodeBattery).Methods("GET")
 	r.HandleFunc("/api/nodes/clock-skew", s.handleFleetClockSkew).Methods("GET")
 	r.HandleFunc("/api/nodes/{pubkey}/clock-skew", s.handleNodeClockSkew).Methods("GET")
@@ -298,6 +329,7 @@ func (s *Server) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/analytics/subpath-detail", s.handleAnalyticsSubpathDetail).Methods("GET")
 	r.HandleFunc("/api/analytics/neighbor-graph", s.handleNeighborGraph).Methods("GET")
 	r.HandleFunc("/api/analytics/relay-airtime-share", s.handleAnalyticsRelayAirtimeShare).Methods("GET")
+	r.HandleFunc("/api/analytics/retransmissions", s.handleAnalyticsRetransmissions).Methods("GET")
 
 	// Other endpoints
 	r.HandleFunc("/api/resolve-hops", s.handleResolveHops).Methods("GET")
@@ -437,6 +469,7 @@ func (s *Server) handleConfigClient(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Customizer != nil && s.cfg.Customizer.DisabledTabs != nil {
 		disabledTabs = s.cfg.Customizer.DisabledTabs
 	}
+	pathTrust := s.cfg.GetPathTrust()
 	writeJSON(w, ClientConfigResponse{
 		Roles:               s.cfg.Roles,
 		HealthThresholds:    s.cfg.GetHealthThresholds().ToClientMs(),
@@ -457,6 +490,7 @@ func (s *Server) handleConfigClient(w http.ResponseWriter, r *http.Request) {
 		Tiles:               s.cfg.Tiles,
 		Customizer:          CustomizerClientConfig{DisabledTabs: disabledTabs},
 		ClientRxCoverage:    s.cfg.ClientRxCoverageEnabled(),
+		PathTrust:           &pathTrust,
 	})
 }
 
@@ -679,8 +713,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(s.startedAt).Seconds()
 
 	wsClients := 0
+	var wsDeny, wsRate, wsConnCap int64
 	if s.hub != nil {
 		wsClients = s.hub.ClientCount()
+		wsDeny, wsRate, wsConnCap = s.hub.limits.counts() // #1794; nil-safe
 	}
 
 	// Real packet store stats
@@ -752,8 +788,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			P95Ms:        round(percentile(sortedPauses, 0.95), 1),
 			P99Ms:        round(percentile(sortedPauses, 0.99), 1),
 		},
-		Cache:     cs,
-		WebSocket: WebSocketStatsResp{Clients: wsClients},
+		Cache: cs,
+		WebSocket: WebSocketStatsResp{Clients: wsClients,
+			RejectedDeny: wsDeny, RejectedRate: wsRate, RejectedConnCap: wsConnCap},
 		PacketStore: HealthPacketStoreStats{
 			Packets:     pktCount,
 			EstimatedMB: pktEstMB,
@@ -780,66 +817,86 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 	s.statsMu.Unlock()
 
-	var stats *Stats
-	var err error
-	if s.store != nil {
-		stats, err = s.store.GetStoreStats()
-	} else {
-		stats, err = s.db.GetStats()
-	}
-	if err != nil {
-		writeError(w, 500, err.Error())
+	// #1910: one rebuild per expiry, not one per request. Everything below runs
+	// inside singleflight, so concurrent callers that miss the cache wait for the
+	// first one's response instead of each running the same DB queries against a
+	// 4-connection pool.
+	built, sfErr, _ := s.statsSF.Do("stats", func() (interface{}, error) {
+		// Re-check under the group: the winner may have just filled the cache.
+		s.statsMu.Lock()
+		if s.statsCache != nil && time.Since(s.statsCachedAt) < statsTTL {
+			cached := s.statsCache
+			s.statsMu.Unlock()
+			return cached, nil
+		}
+		s.statsMu.Unlock()
+
+		var stats *Stats
+		var err error
+		if s.store != nil {
+			stats, err = s.store.GetStoreStats()
+		} else {
+			stats, err = s.db.GetStats()
+		}
+		if err != nil {
+			return nil, err
+		}
+		counts := s.db.GetRoleCounts()
+
+		// Memory accounting (#832). storeDataMB is the in-store packet byte
+		// estimate (the old "trackedMB"); processRSSMB / goHeapInuseMB / goSysMB
+		// give ops the breakdown needed to reason about real RSS. All values
+		// share a single 1s-cached snapshot to amortize ReadMemStats cost.
+		var storeDataMB float64
+		if s.store != nil {
+			storeDataMB = s.store.trackedMemoryMB()
+		}
+		mem := s.getMemorySnapshot(storeDataMB)
+
+		resp := &StatsResponse{
+			TotalPackets:       stats.TotalPackets,
+			TotalTransmissions: &stats.TotalTransmissions,
+			TotalObservations:  stats.TotalObservations,
+			TotalNodes:         stats.TotalNodes,
+			TotalNodesAllTime:  stats.TotalNodesAllTime,
+			TotalObservers:     stats.TotalObservers,
+			PacketsLastHour:    stats.PacketsLastHour,
+			PacketsLast24h:     stats.PacketsLast24h,
+			Engine:             "go",
+			Version:            s.version,
+			Commit:             s.commit,
+			BuildTime:          s.buildTime,
+			Counts: RoleCounts{
+				Repeaters:  counts["repeaters"],
+				Rooms:      counts["rooms"],
+				Companions: counts["companions"],
+				Sensors:    counts["sensors"],
+			},
+			SignatureDrops:        s.db.GetSignatureDropCount(),
+			HashMigrationComplete: s.store != nil && s.store.hashMigrationComplete.Load(),
+
+			TrackedMB:     mem.StoreDataMB, // deprecated alias
+			StoreDataMB:   mem.StoreDataMB,
+			ProcessRSSMB:  mem.ProcessRSSMB,
+			GoHeapInuseMB: mem.GoHeapInuseMB,
+			GoSysMB:       mem.GoSysMB,
+
+			NeighborGraphCacheRebuildFailures: atomic.LoadUint64(&s.neighborGraphCacheRebuildFailures),
+		}
+
+		s.statsMu.Lock()
+		s.statsCache = resp
+		s.statsCachedAt = time.Now()
+		s.statsMu.Unlock()
+
+		return resp, nil
+	})
+	if sfErr != nil {
+		writeError(w, 500, sfErr.Error())
 		return
 	}
-	counts := s.db.GetRoleCounts()
 
-	// Memory accounting (#832). storeDataMB is the in-store packet byte
-	// estimate (the old "trackedMB"); processRSSMB / goHeapInuseMB / goSysMB
-	// give ops the breakdown needed to reason about real RSS. All values
-	// share a single 1s-cached snapshot to amortize ReadMemStats cost.
-	var storeDataMB float64
-	if s.store != nil {
-		storeDataMB = s.store.trackedMemoryMB()
-	}
-	mem := s.getMemorySnapshot(storeDataMB)
-
-	resp := &StatsResponse{
-		TotalPackets:       stats.TotalPackets,
-		TotalTransmissions: &stats.TotalTransmissions,
-		TotalObservations:  stats.TotalObservations,
-		TotalNodes:         stats.TotalNodes,
-		TotalNodesAllTime:  stats.TotalNodesAllTime,
-		TotalObservers:     stats.TotalObservers,
-		PacketsLastHour:    stats.PacketsLastHour,
-		PacketsLast24h:     stats.PacketsLast24h,
-		Engine:             "go",
-		Version:            s.version,
-		Commit:             s.commit,
-		BuildTime:          s.buildTime,
-		Counts: RoleCounts{
-			Repeaters:  counts["repeaters"],
-			Rooms:      counts["rooms"],
-			Companions: counts["companions"],
-			Sensors:    counts["sensors"],
-		},
-		SignatureDrops:        s.db.GetSignatureDropCount(),
-		HashMigrationComplete: s.store != nil && s.store.hashMigrationComplete.Load(),
-
-		TrackedMB:     mem.StoreDataMB, // deprecated alias
-		StoreDataMB:   mem.StoreDataMB,
-		ProcessRSSMB:  mem.ProcessRSSMB,
-		GoHeapInuseMB: mem.GoHeapInuseMB,
-		GoSysMB:       mem.GoSysMB,
-
-		NeighborGraphCacheRebuildFailures: atomic.LoadUint64(&s.neighborGraphCacheRebuildFailures),
-	}
-
-	s.statsMu.Lock()
-	s.statsCache = resp
-	s.statsCachedAt = time.Now()
-	s.statsMu.Unlock()
-
-	writeJSON(w, resp)
+	writeJSON(w, built.(*StatsResponse))
 }
 
 func (s *Server) handlePerf(w http.ResponseWriter, r *http.Request) {
@@ -1180,6 +1237,49 @@ func (s *Server) handlePacketDetail(w http.ResponseWriter, r *http.Request) {
 	if len(observations) == 0 && fromDB && s.db != nil && hash != "" {
 		observations = s.db.GetObservationsForHash(hash)
 	}
+	// #1999: give each observation its OWN wire bytes. Neither the store nor
+	// the DB observation query carries them — both deliberately drop
+	// observations.raw_hex (#881, ~98MB on a 1.7M-observation store) on the
+	// assumption that one content hash means one frame. The firmware hashes
+	// payload and type independently of the relay path, so that is false: on a
+	// production DB, 1844 of the 3000 most recent transmissions with multiple
+	// observations hold genuinely different frames, up to 51 of them for a
+	// single packet. Without this the detail view showed the transmission's
+	// canonical frame for every observation, which can contradict the
+	// path_json shown beside it.
+	//
+	// Done here rather than in enrichObs so it is one query for the whole
+	// request instead of one per observation, and after the store lock is
+	// released. Bytes already present win: a caller that built the map from a
+	// response (or a future path that does retain them) is not overwritten.
+	// The canonical frame, for observations that stored none of their own. The
+	// store path already fills this in (enrichObsWithTx falls back to
+	// tx.RawHex), but the DB-fallback path never has: its observation query
+	// selects no raw_hex at all, so those observations came back with the field
+	// missing entirely. Both paths end up consistent here.
+	// A stored per-observation frame WINS over whatever is already in the map.
+	// On the store path enrichObsWithTx has already put the transmission's
+	// canonical frame there, so skipping observations that "already have"
+	// raw_hex would skip every one of them and leave the bug in place on the
+	// main path. Only where no frame is stored does the canonical value stand.
+	canonicalHex, _ := packet["raw_hex"].(string)
+	if s.db != nil && hash != "" && len(observations) > 0 {
+		byObsID := s.db.ObservationRawHexForHash(hash)
+		for _, obs := range observations {
+			if id, ok := obs["id"].(int); ok {
+				if hx := byObsID[id]; hx != "" {
+					obs["raw_hex"] = hx
+					continue
+				}
+			}
+			if existing, ok := obs["raw_hex"].(string); ok && existing != "" {
+				continue
+			}
+			if canonicalHex != "" {
+				obs["raw_hex"] = canonicalHex
+			}
+		}
+	}
 	observationCount := len(observations)
 	if observationCount == 0 {
 		observationCount = 1
@@ -1230,117 +1330,14 @@ func (s *Server) handleDecode(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handlePostPacket(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Hex      string   `json:"hex"`
-		Observer *string  `json:"observer"`
-		Snr      *float64 `json:"snr"`
-		Rssi     *float64 `json:"rssi"`
-		Region   *string  `json:"region"`
-		Hash     *string  `json:"hash"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, 400, "invalid JSON body")
-		return
-	}
-	hexStr := strings.TrimSpace(body.Hex)
-	if hexStr == "" {
-		writeError(w, 400, "hex is required")
-		return
-	}
-	decoded, err := DecodePacket(hexStr, false)
-	if err != nil {
-		writeError(w, 400, err.Error())
-		return
-	}
-
-	contentHash := ComputeContentHash(hexStr)
-	pathJSON := "[]"
-	// For TRACE packets, path_json must be the payload-decoded route hops
-	// (decoded.Path.Hops), NOT the raw_hex header bytes which are SNR values.
-	// For all other packet types, derive path from raw_hex (#886).
-	if !packetpath.PathBytesAreHops(byte(decoded.Header.PayloadType)) {
-		if len(decoded.Path.Hops) > 0 {
-			if pj, e := json.Marshal(decoded.Path.Hops); e == nil {
-				pathJSON = string(pj)
-			}
-		}
-	} else if hops, err := packetpath.DecodePathFromRawHex(hexStr); err == nil && len(hops) > 0 {
-		if pj, e := json.Marshal(hops); e == nil {
-			pathJSON = string(pj)
-		}
-	}
-	decodedJSON := PayloadJSON(&decoded.Payload)
-	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	nowEpoch := time.Now().Unix()
-
-	var snr, rssi interface{}
-	if body.Snr != nil {
-		snr = *body.Snr
-	}
-	if body.Rssi != nil {
-		rssi = *body.Rssi
-	}
-
-	// v3 schema (cmd/ingestor/db.go:251-303): transmissions no longer carries
-	// path_json (it lives on observations now), observations uses observer_idx
-	// INTEGER (FK observers.rowid) and timestamp INTEGER (unix epoch).
-	// Fix for #1196 — pre-fix code wrote v2 column names and silently
-	// swallowed the observations insert error.
-	res, dbErr := s.db.conn.Exec(`INSERT INTO transmissions (hash, raw_hex, route_type, payload_type, payload_version, decoded_json, first_seen)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		contentHash, strings.ToUpper(hexStr), decoded.Header.RouteType, decoded.Header.PayloadType,
-		decoded.Header.PayloadVersion, decodedJSON, now)
-	if dbErr != nil {
-		writeError(w, 500, "transmission insert: "+dbErr.Error())
-		return
-	}
-	insertedID, _ := res.LastInsertId()
-
-	// Resolve observer string → observers.rowid. INSERT OR IGNORE then SELECT
-	// mirrors the ingestor's resolver (cmd/ingestor/db.go:778,799,906).
-	var observerIdx interface{}
-	if body.Observer != nil && *body.Observer != "" {
-		obsID := *body.Observer
-		if _, err := s.db.conn.Exec(
-			`INSERT OR IGNORE INTO observers (id, name, last_seen, first_seen) VALUES (?, ?, ?, ?)`,
-			obsID, obsID, now, now); err != nil {
-			writeError(w, 500, "observer upsert: "+err.Error())
-			return
-		}
-		var rowid int64
-		if err := s.db.conn.QueryRow(`SELECT rowid FROM observers WHERE id = ?`, obsID).Scan(&rowid); err != nil {
-			writeError(w, 500, "observer lookup: "+err.Error())
-			return
-		}
-		observerIdx = rowid
-	}
-
-	if _, obsErr := s.db.conn.Exec(
-		`INSERT INTO observations (transmission_id, observer_idx, snr, rssi, path_json, timestamp)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-		insertedID, observerIdx, snr, rssi, pathJSON, nowEpoch); obsErr != nil {
-		writeError(w, 500, "observation insert: "+obsErr.Error())
-		return
-	}
-
-	writeJSON(w, PacketIngestResponse{
-		ID: insertedID,
-		Decoded: map[string]interface{}{
-			"header":  decoded.Header,
-			"path":    decoded.Path,
-			"payload": decoded.Payload,
-		},
-	})
-}
-
 // --- Node Handlers ---
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	limit := queryLimit(r, 50, s.cfg.ListLimits.NodesMax)
+	offset := queryInt(r, "offset", 0)
 	nodes, total, counts, err := s.db.GetNodes(
-		queryLimit(r, 50, s.cfg.ListLimits.NodesMax),
-		queryInt(r, "offset", 0),
+		limit, offset,
 		q.Get("role"), q.Get("search"), q.Get("before"),
 		q.Get("lastHeard"), q.Get("sortBy"), q.Get("region"),
 	)
@@ -1348,6 +1345,14 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
+	// Whether more rows exist is decided HERE, against the raw SQL page and the
+	// real COUNT(*), because both other candidate signals are destroyed further
+	// down: the geo-filter / blacklist / hidden-prefix / area passes drop rows
+	// from this page AND rewrite `total` to the filtered length. A page that
+	// loses a row is then short without being the last page, so a client that
+	// stops on a short page strands every node behind it (#1606 fixed the
+	// no-filter case only). has_more survives those passes untouched.
+	hasMore := offset+len(nodes) < total
 	if s.store != nil {
 		hashInfo := s.store.GetNodeHashSizeInfo()
 		relayWindow := s.cfg.GetHealthThresholds().RelayActiveHours
@@ -1368,6 +1373,16 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		if needsRelay {
 			relayMap = s.store.GetRepeaterRelayInfoMap(relayWindow)
 			usefulMap = s.store.GetRepeaterUsefulnessScoreMap()
+		}
+		// #2001: declared region lists, once per request rather than per
+		// node, so the map can colour every repeater by its scope-config
+		// state. Two small queries (232 rows on a live instance) and no
+		// window scan — the state is a pure function of the declared list,
+		// see nodeScopeConfigState.
+		var declaredCSV map[string]declaredAnswer
+		declaredOK := false
+		if needsRelay {
+			declaredCSV, declaredOK = s.declaredRegionsCSV()
 		}
 		// Bridge axis (#672 axis 2 of 4). Snapshot is an atomic load
 		// — safe to call regardless of needsRelay, and we want the
@@ -1405,6 +1420,15 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 					// nodes without scopes / on older schemas.
 					if len(info.TransportedScopes) > 0 {
 						node["transported_scopes"] = info.TransportedScopes
+					}
+					// #2001: how this repeater's region config reads, from
+					// its own declared answer where it gave one and from
+					// what it has been observed carrying where it did not.
+					// Omitted entirely when the declared lookup failed —
+					// see declaredRegionsCSV.
+					if declaredOK {
+						csv, has := declaredCSV[strings.ToLower(pk)]
+						enrichNodeDeclaredScope(node, csv, has, info.TransportedScopes)
 					}
 					// #672 4-axis usefulness. traffic_share_score keeps the
 					// raw per-axis Traffic value (#1456); the structural axes
@@ -1498,7 +1522,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			total = len(filtered)
 		}
 	}
-	writeJSON(w, NodeListResponse{Nodes: nodes, Total: total, Counts: counts})
+	writeJSON(w, NodeListResponse{Nodes: nodes, Total: total, Counts: counts, HasMore: hasMore})
 }
 
 func (s *Server) handleNodeSearch(w http.ResponseWriter, r *http.Request) {
@@ -1602,6 +1626,12 @@ func (s *Server) handleNodeDetail(w http.ResponseWriter, r *http.Request) {
 			// when non-empty (absent for no-scope nodes / older schemas).
 			if len(info.TransportedScopes) > 0 {
 				node["transported_scopes"] = info.TransportedScopes
+			}
+			// #2001: same field, same rules as handleNodes — the node page
+			// and the map must not disagree about a repeater's scope state.
+			if declaredCSV, ok := s.declaredRegionsCSV(); ok {
+				csv, has := declaredCSV[strings.ToLower(pubkey)]
+				enrichNodeDeclaredScope(node, csv, has, info.TransportedScopes)
 			}
 			// #672 4-axis usefulness (see handleNodes for the field
 			// contract). traffic_share_score keeps the raw per-axis
@@ -2104,13 +2134,7 @@ func (s *Server) handleNodeAnalytics(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "Not found")
 		return
 	}
-	days := queryInt(r, "days", 7)
-	if days < 1 {
-		days = 1
-	}
-	if days > 365 {
-		days = 365
-	}
+	days := nodeAnalyticsDays(r)
 
 	if s.store != nil {
 		result, err := s.store.GetNodeAnalytics(pubkey, days)
@@ -2123,6 +2147,29 @@ func (s *Server) handleNodeAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeError(w, 404, "Not found")
+}
+
+// nodeAnalyticsDays reads the node analytics range picker's ?days= (default 7,
+// clamped to 1-365).
+func nodeAnalyticsDays(r *http.Request) int {
+	return min(max(queryInt(r, "days", 7), 1), 365)
+}
+
+// handleNodeHopAnalytics serves the hop count at this node for each flood
+// packet it forwarded (issue #1812). Separate from /analytics so the hop
+// scan does not slow down the main analytics response.
+func (s *Server) handleNodeHopAnalytics(w http.ResponseWriter, r *http.Request) {
+	pubkey := mux.Vars(r)["pubkey"]
+	if s.cfg.IsBlacklisted(pubkey) || s.isPubkeyHidden(pubkey) || s.store == nil {
+		writeError(w, 404, "Not found")
+		return
+	}
+	result, err := s.store.GetNodeHopAnalytics(pubkey, nodeAnalyticsDays(r))
+	if err != nil || result == nil {
+		writeError(w, 404, "Not found")
+		return
+	}
+	writeJSON(w, result)
 }
 
 func (s *Server) handleNodeClockSkew(w http.ResponseWriter, r *http.Request) {
@@ -2848,6 +2895,18 @@ func (s *Server) handleObserverAnalytics(w http.ResponseWriter, r *http.Request)
 	obsList := s.store.byObserver[id]
 	obsSnapshot := make([]*StoreObs, len(obsList))
 	copy(obsSnapshot, obsList)
+	// #1830: also resolve each referenced transmission's *StoreTx under
+	// this same RLock. s.store.byTxID is guarded by s.store.mu (writes
+	// from ingest/eviction); reading it after RUnlock — as the loop below
+	// used to via s.store.byTxID[...] and enrichObs() — races with those
+	// writers. Keyed by TransmissionID (not by observation index) since
+	// multiple observations can share one transmission.
+	txByID := make(map[int]*StoreTx, len(obsSnapshot))
+	for _, obs := range obsSnapshot {
+		if _, ok := txByID[obs.TransmissionID]; !ok {
+			txByID[obs.TransmissionID] = s.store.byTxID[obs.TransmissionID]
+		}
+	}
 	s.store.mu.RUnlock()
 	filtered := make([]*StoreObs, 0, len(obsSnapshot))
 	for _, obs := range obsSnapshot {
@@ -2863,10 +2922,10 @@ func (s *Server) handleObserverAnalytics(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, ObserverAnalyticsResponse{
 		Timeline:        buildTimeline(filtered, days),
-		PacketTypes:     buildPacketTypes(s.store, filtered),
-		NodesTimeline:   buildNodesTimeline(s.store, filtered, days),
+		PacketTypes:     buildPacketTypes(filtered, txByID),
+		NodesTimeline:   buildNodesTimeline(filtered, days, txByID),
 		SnrDistribution: buildSnrDistribution(filtered),
-		RecentPackets:   buildRecentPackets(s.store, filtered, 20),
+		RecentPackets:   buildRecentPackets(s.store, filtered, 20, txByID),
 	})
 }
 
@@ -2954,8 +3013,7 @@ func (s *Server) handleAudioLabBuckets(w http.ResponseWriter, r *http.Request) {
 			}
 			typeName := "UNKNOWN"
 			if tx.DecodedJSON != "" {
-				var d map[string]interface{}
-				if err := json.Unmarshal([]byte(tx.DecodedJSON), &d); err == nil {
+				if d := tx.ParsedDecoded(); d != nil {
 					if t, ok := d["type"].(string); ok && t != "" {
 						typeName = t
 					}
