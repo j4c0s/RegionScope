@@ -890,7 +890,7 @@
           return;
         }
 
-        selectedPacketQuery = hash || id;
+        selectedPacketQuery = id || hash;
         selectedObservationId = id;
         openPacketDetail(selectedPacketQuery, selectedObservationId);
         renderPacketsTable();
