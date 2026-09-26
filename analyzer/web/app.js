@@ -922,6 +922,14 @@
     try {
       const res = await fetch(`/api/packets/${encodeURIComponent(query)}`);
       const data = await res.json();
+      if (!res.ok || data.error) {
+        pktRight.innerHTML = `<button type="button" class="panel-close-btn" id="closeDetailBtn">&times;</button><p class="text-muted">Błąd: ${escapeHtml(data.error || 'Nie znaleziono pakietu')}</p>`;
+        document.getElementById('closeDetailBtn').addEventListener('click', () => {
+          layout.classList.add('detail-collapsed');
+          selectedPacketQuery = null;
+        });
+        return;
+      }
       const pkt = data.packet;
       const observations = data.observations || [];
 

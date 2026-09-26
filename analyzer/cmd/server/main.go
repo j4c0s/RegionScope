@@ -767,20 +767,23 @@ func handlePacketsApi(w http.ResponseWriter, r *http.Request) {
 func handlePacketDetailApi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if dbStorage == nil {
-		http.Error(w, "database not available", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "database not available"})
 		return
 	}
 
 	query := strings.TrimPrefix(r.URL.Path, "/api/packets/")
 	query = strings.TrimSpace(query)
 	if query == "" {
-		http.Error(w, "missing packet query", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "missing packet query"})
 		return
 	}
 
 	basePkt, observations, err := dbStorage.GetPacketByHashOrID(query)
 	if err != nil {
-		http.Error(w, "packet not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "packet not found"})
 		return
 	}
 
