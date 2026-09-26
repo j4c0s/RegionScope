@@ -595,9 +595,9 @@ func (s *Storage) GetPacketByHashOrID(query string) (*packet.ParsedPacket, []*pa
 		       payload_type, type_name, path_byte_size, hops_json, resolved_hops_json,
 		       hash, raw_hex, packet_size, snr, rssi, channel_name, decrypted_txt, sender, decoded_json
 		FROM packets
-		WHERE hash = ? OR id = ?
+		WHERE hash = ? OR id = ? OR hash LIKE ?
 		ORDER BY id DESC
-	`, strings.ToUpper(query), query)
+	`, strings.ToUpper(query), query, strings.ToUpper(query)+"%")
 	if err != nil {
 		return nil, nil, err
 	}

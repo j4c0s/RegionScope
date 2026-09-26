@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": "a2b4571f",
+    "broker": "tcp://185.238.72.131:41986",
+    "topic": "meshcore/#",
+    "user": "loramc2",
+    "pass": "LorA-82049",
+    "enabled": true,
+    "status": "connecting"
+  }
+]
