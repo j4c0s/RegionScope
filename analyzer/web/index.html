@@ -3,90 +3,58 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MeshCore MQTT Packet Analyzer & Topology</title>
+  <title>MeshRC v5.91 - [#meshcore: Live MeshCore Stream]</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Vis-Network for Topology Graph -->
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
-  <div class="app-container">
-    <!-- Header / Navbar -->
-    <header class="navbar">
-      <div class="nav-brand">
-        <div class="logo-icon">📡</div>
-        <div>
-          <h1 class="nav-title">MeshCore Analyzer</h1>
-          <p class="nav-subtitle" data-i18n="subtitle">Nasłuchiwanie MQTT & Analiza Topologii</p>
-        </div>
+  <div class="win-window">
+    <!-- Win95 Title Bar -->
+    <div class="win-titlebar">
+      <span>📡 MeshRC32 - [#meshcore (+nt): Live MeshCore Packet Stream]</span>
+      <div class="win-titlebar-controls">
+        <button type="button" class="win-btn-box" id="openSettingsBtn" title="Ustawienia / Settings">⚙️</button>
+        <button type="button" class="win-btn-box" id="langToggleBtn" title="Język / Language">PL</button>
       </div>
+    </div>
 
-      <!-- Navigation Tabs -->
-      <nav class="nav-tabs">
-        <button type="button" class="tab-btn active" id="tabPacketsBtn" data-i18n="tabPackets">📡 Pakiety Live</button>
-        <button type="button" class="tab-btn" id="tabTopologyBtn" data-i18n="tabTopology">🗺️ Mapa Topologii</button>
-      </nav>
+    <!-- Win95 Menu Bar -->
+    <div class="win-menubar">
+      <span class="win-menu-item active" id="tabPacketsBtn" data-i18n="tabPackets">📡 Pakiety Live</span>
+      <span class="win-menu-item" id="tabTopologyBtn" data-i18n="tabTopology">🗺️ Mapa Topologii</span>
+      <span class="win-menu-item" id="openSettingsMenuBtn" data-i18n="settings">⚙️ Ustawienia</span>
+      <span class="win-menu-item" id="clearLogBtn" data-i18n="btnClearLog">🗑️ Wyczyść Ekran</span>
+    </div>
 
-      <div class="nav-actions">
-        <!-- Status Indicator -->
-        <div class="status-indicator" id="statusBadge">
-          <span class="status-dot disconnected" id="statusDot"></span>
-          <span id="statusText" data-i18n="statusConnecting">Łączenie z serwerem...</span>
-        </div>
+    <!-- Iconic mIRC 32-bit Toolbar -->
+    <div class="mirc-toolbar">
+      <button type="button" class="mirc-tool-btn" id="tbConnectBtn" title="Connect/Disconnect">⚡ Connect</button>
+      <button type="button" class="mirc-tool-btn" id="tbChannelsBtn" title="Channels List">📋 Channels</button>
+      <button type="button" class="mirc-tool-btn" id="tbClearBtn" title="Clear Screen">🧹 Clear</button>
+      <button type="button" class="mirc-tool-btn" id="tbSettingsBtn" title="Options">🛠️ Options</button>
+      <span style="margin-left: auto; font-family: var(--font-code); font-weight: bold; color: #000080;" id="mircServerStatus">Status: Connected to MeshRC Gateway</span>
+    </div>
 
-        <!-- Settings Button -->
-        <button type="button" class="btn btn-secondary" id="openSettingsModalBtn">
-          <span>⚙️</span> <span data-i18n="settings">Ustawienia</span>
-        </button>
-
-        <!-- Language Toggle -->
-        <div class="lang-toggle">
-          <button type="button" class="lang-btn active" id="langPlBtn">PL</button>
-          <button type="button" class="lang-btn" id="langEnBtn">EN</button>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="main-content">
-      <!-- Packets View -->
-      <section id="packetsView" class="view-section active">
-        <div class="table-container">
-          <div class="table-header">
-            <h2 data-i18n="liveTitle">Ostatnie Odebrane Pakiety Live</h2>
-            <div class="table-actions">
-              <div class="live-indicator">
-                <span class="live-dot"></span> <span data-i18n="liveFeed">Na żywo (WebSockets)</span>
-              </div>
-            </div>
+    <!-- Main Body -->
+    <div class="win-body">
+      <!-- Packets View: mIRC-style continuous text stream with right side Nicklist -->
+      <section id="packetsView" class="view-section">
+        <div class="mirc-main-layout">
+          <div class="mirc-container" id="pktLog">
+            <!-- Continuous line-by-line packet log stream -->
           </div>
-
-          <!-- Table -->
-          <div class="table-wrapper">
-            <table class="packet-table" id="packetTable">
-              <thead>
-                <tr>
-                  <th style="width: 100px;" data-i18n="colTime">Czas</th>
-                  <th style="width: 110px;" data-i18n="colType">Typ Pakietu</th>
-                  <th style="width: 90px;" data-i18n="colRegion">Scope</th>
-                  <th style="width: 140px;" data-i18n="colOrigin">Obserwator / Nadawca</th>
-                  <th style="width: 120px;" data-i18n="colPathLen">Długość ścieżki</th>
-                  <th data-i18n="colHops">Repeatery w Ścieżce</th>
-                  <th style="width: 110px;" data-i18n="colHash">Hash</th>
-                  <th style="width: 80px;" id="thCount" class="hidden" data-i18n="colCount">Ilość</th>
-                  <th data-i18n="colHex">Raw Hex</th>
-                </tr>
-              </thead>
-              <tbody id="packetTableBody">
-                <!-- Empty state initially -->
-              </tbody>
-            </table>
-
-            <div class="empty-state" id="emptyState">
-              <div class="empty-icon">📻</div>
-              <h3 data-i18n="emptyTitle">Oczekiwanie na pakiety MeshCore...</h3>
-              <p data-i18n="emptyDesc">Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.</p>
+          <div class="mirc-nicklist">
+            <div class="nicklist-header">Kanały i Węzły</div>
+            <div id="nickListContainer">
+              <div class="nicklist-item channel-item selected" data-chan="ALL">#Wszystkie</div>
+              <div class="nicklist-item channel-item" data-chan="#public">#public</div>
+              <div class="nicklist-item channel-item" data-chan="#mesh">#mesh</div>
+              <div class="nicklist-item channel-item" data-chan="#wro">#wro</div>
+              <div class="nicklist-item channel-item" data-chan="#poz">#poz</div>
+              <div class="nicklist-item channel-item" data-chan="#ieg">#ieg</div>
+              <div style="border-top: 1px solid var(--win-border-dark); margin: 2px 0;"></div>
+              <div id="dynamicNickList"></div>
             </div>
           </div>
         </div>
@@ -96,93 +64,101 @@
       <section id="topologyView" class="view-section hidden">
         <div class="topology-container">
           <div class="topology-sidebar">
-            <h3 data-i18n="nodeInfoTitle">Informacje o Węźle</h3>
-            <div id="nodeInfoBox" class="node-info-box">
-              <p class="text-muted" data-i18n="nodeInfoPlaceholder">Kliknij węzeł na mapie, aby zobaczyć jego właściwości.</p>
+            <h4 data-i18n="nodeInfoTitle">Informacje o Węźle</h4>
+            <div id="nodeInfoBox" style="margin-top: 6px;">
+              <p style="color: var(--win-text-muted);" data-i18n="nodeInfoPlaceholder">Kliknij węzeł na mapie, aby zobaczyć jego właściwości.</p>
             </div>
           </div>
-
           <div class="topology-graph-wrapper">
             <div id="topologyNetwork" class="topology-network"></div>
-            <div class="graph-legend">
-              <div class="legend-item"><span class="legend-color node-known"></span> <span data-i18n="legendAdvert">Known Advert Node</span></div>
-              <div class="legend-item"><span class="legend-color node-hop"></span> <span data-i18n="legendHop">Hop Node</span></div>
-              <div class="legend-item"><span class="legend-color edge-fresh"></span> <span data-i18n="legendFresh">&lt; 5 min</span></div>
-              <div class="legend-item"><span class="legend-color edge-stale"></span> <span data-i18n="legendStale">&gt; 1 godz.</span></div>
-            </div>
           </div>
         </div>
       </section>
-    </main>
+    </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <p>MeshCore Packet Path Analyzer &bull; Topology Mapper</p>
-    </footer>
+    <!-- Win95 Statusbar -->
+    <div class="win-statusbar">
+      <div class="win-status-pane" id="statusPane" data-i18n="statusConnecting">Łączenie z serwerem WS...</div>
+      <div class="win-status-pane" id="countPane">Pakiety: 0</div>
+      <div class="win-status-pane">MeshRC 32-bit v5.91 [MeshCore Gateway]</div>
+    </div>
   </div>
 
-  <!-- Settings Modal -->
-  <div class="modal-overlay hidden" id="settingsModal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 data-i18n="settingsTitle">Ustawienia i Konfiguracja</h3>
-        <button type="button" class="modal-close" id="closeSettingsModalBtn">&times;</button>
+  <!-- Notepad-Style Packet Detail Modal -->
+  <div class="win-modal-overlay hidden" id="notepadModal">
+    <div class="win-modal-card">
+      <div class="win-titlebar">
+        <span>Notepad.exe - [Szczegóły Pakietu]</span>
+        <div class="win-titlebar-controls">
+          <button type="button" class="win-btn-box" id="closeNotepadBtn">&times;</button>
+        </div>
       </div>
-      <div class="modal-body">
-        <!-- Display Toggles -->
-        <div class="form-group">
-          <label class="toggle-control">
-            <input type="checkbox" id="groupByHashToggle">
-            <span class="toggle-slider"></span>
-            <span class="toggle-label" data-i18n="groupByHash">Grupuj pakiety live po hashu</span>
-          </label>
+      <div style="padding: 6px; background-color: var(--win-bg);">
+        <textarea id="notepadText" class="notepad-textarea" readonly spellcheck="false"></textarea>
+        <div style="margin-top: 6px; text-align: right;">
+          <button type="button" class="win-btn" id="closeNotepadOkBtn">OK</button>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <hr class="modal-divider">
-
-        <!-- MQTT Servers Section -->
-        <h4 data-i18n="mqttServersTitle">Zarządzanie Serwerami MQTT</h4>
-        <form id="addBrokerForm" class="broker-form" style="margin-top: 10px;">
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label for="inputHost" data-i18n="labelHost">Adres serwera (Host / IP)</label>
-              <input type="text" id="inputHost" placeholder="mqtt.marwoj.net" required>
-            </div>
-            <div class="form-group flex-1">
-              <label for="inputPort" data-i18n="labelPort">Port</label>
-              <input type="number" id="inputPort" placeholder="1883" value="1883" required>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label for="inputUser" data-i18n="labelUser">Użytkownik (opcjonalnie)</label>
-              <input type="text" id="inputUser" placeholder="username">
-            </div>
-            <div class="form-group flex-1">
-              <label for="inputPass" data-i18n="labelPass">Hasło (opcjonalnie)</label>
-              <input type="password" id="inputPass" placeholder="••••••••">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="inputTopic" data-i18n="labelTopic">Temat MQTT (Topic)</label>
-            <input type="text" id="inputTopic" placeholder="meshcore/#" value="meshcore/#" required>
-          </div>
-
-          <button type="submit" class="btn btn-primary" style="width: 100%;" data-i18n="btnAddServer">Połącz i Dodaj Serwer</button>
-        </form>
-
-        <div id="brokersList" class="brokers-list" style="margin-top: 14px;">
-          <!-- Active broker items -->
+  <!-- Settings & Filters Modal -->
+  <div class="win-modal-overlay hidden" id="settingsModal">
+    <div class="win-modal-card">
+      <div class="win-titlebar">
+        <span data-i18n="settingsTitle">Ustawienia i Filtry Systemowe</span>
+        <div class="win-titlebar-controls">
+          <button type="button" class="win-btn-box" id="closeSettingsModalBtn">&times;</button>
         </div>
+      </div>
+      <div style="padding: 10px; background-color: var(--win-bg); font-size: 11px;">
+        <fieldset style="border: 1px solid var(--win-border-dark); padding: 8px; margin-bottom: 8px;">
+          <legend style="padding: 0 4px; font-weight: bold;" data-i18n="filterTitle">Filtrowanie i Grupowanie</legend>
 
-        <hr class="modal-divider">
+          <div style="margin-bottom: 6px;">
+            <label><input type="checkbox" id="groupByHashToggle" checked> <span data-i18n="btnGroupHash">Grupuj pakiety po hashu</span></label>
+          </div>
 
-        <!-- Database Cleanup -->
-        <h4 data-i18n="dbCleanupTitle">Zarządzanie Bazą Danych</h4>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="dbCleanupDesc">Czyszczenie usunie zapisane pakiety, słownik węzłów z Advertów oraz krawędzie topologii.</p>
-        <button type="button" class="btn btn-danger" id="clearDbBtn" style="width: 100%;" data-i18n="btnClearDb">🗑️ Wyczyść Wszystkie Dane Topologii</button>
+          <div style="margin-bottom: 6px;">
+            <label data-i18n="labelTimeWindow">Przedział czasowy:</label>
+            <select id="fTimeWindow" class="win-select">
+              <option value="15" data-i18n="tw15">Ostatnie 15 min</option>
+              <option value="30" data-i18n="tw30">Ostatnie 30 min</option>
+              <option value="60" data-i18n="tw60">Ostatnia 1 godz.</option>
+              <option value="180" data-i18n="tw180">Ostatnie 3 godz.</option>
+              <option value="1440" data-i18n="tw1440">Ostatnie 24 godz.</option>
+              <option value="0" data-i18n="twAll">Wszystkie</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 6px;">
+            <label data-i18n="labelChanFilter">Filtr kanału:</label>
+            <input type="text" id="fChannel" class="win-input" placeholder="#public, #wro..." style="width: 100%;">
+          </div>
+
+          <div>
+            <label data-i18n="labelHashFilter">Filtr hashu / nadawcy:</label>
+            <input type="text" id="fHash" class="win-input" placeholder="Hash pakietu lub nadawca..." style="width: 100%;">
+          </div>
+        </fieldset>
+
+        <fieldset style="border: 1px solid var(--win-border-dark); padding: 8px; margin-bottom: 8px;">
+          <legend style="padding: 0 4px; font-weight: bold;" data-i18n="mqttServersTitle">Serwery MQTT</legend>
+          <form id="addBrokerForm" style="display: flex; flex-direction: column; gap: 4px;">
+            <input type="text" id="inputHost" class="win-input" placeholder="Host: mqtt.marwoj.net" required>
+            <div style="display: flex; gap: 4px;">
+              <input type="number" id="inputPort" class="win-input" placeholder="1883" value="1883" style="width: 70px;">
+              <input type="text" id="inputTopic" class="win-input" placeholder="Topic: meshcore/#" value="meshcore/#" style="flex: 1;">
+            </div>
+            <button type="submit" class="win-btn" style="margin-top: 4px;" data-i18n="btnAddServer">Dodaj Serwer MQTT</button>
+          </form>
+          <div id="brokersList" style="margin-top: 6px; max-height: 100px; overflow-y: auto;"></div>
+        </fieldset>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+          <button type="button" class="win-btn" id="clearDbBtn" style="color: #800000;" data-i18n="btnClearDb">🗑️ Wyczyść Bazę Danych</button>
+          <button type="button" class="win-btn" id="closeSettingsOkBtn">Zamknij</button>
+        </div>
       </div>
     </div>
   </div>

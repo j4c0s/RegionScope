@@ -29,6 +29,7 @@ recover-delta.sh
 merge.sh
 replacements.txt
 reps.txt
+*.exe
 cmd/server/server.exe
 cmd/ingestor/ingestor.exe
 # CI trigger

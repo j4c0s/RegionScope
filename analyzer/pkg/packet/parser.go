@@ -53,11 +53,13 @@ func GetPayloadTypeName(pType byte) string {
 
 // ParsedPacket represents a processed MeshCore packet with rich decoded fields.
 type ParsedPacket struct {
+	ID           int64    `json:"id,omitempty"`
 	Timestamp    string   `json:"timestamp"`
 	Region       string   `json:"region"`
 	Observer     string   `json:"observer"`
 	Origin       string   `json:"origin"`
 	Scope        string   `json:"scope,omitempty"`
+	ScopeName    string   `json:"scope_name,omitempty"`
 	RouteType    int      `json:"route_type"`
 	PathByteSize int      `json:"path_byte_size"`
 	PathCount    int      `json:"path_count"`
@@ -68,6 +70,9 @@ type ParsedPacket struct {
 	TypeName     string   `json:"type_name"`
 	Hash         string   `json:"hash"`
 	RawHex       string   `json:"raw_hex"`
+	PacketSize   int      `json:"packet_size"`
+	SNR          *float64 `json:"snr,omitempty"`
+	RSSI         *int     `json:"rssi,omitempty"`
 	AdvertName   string   `json:"advert_name,omitempty"`
 	AdvertKey    string   `json:"advert_key,omitempty"`
 	Lat          float64  `json:"lat,omitempty"`
@@ -81,6 +86,7 @@ type ParsedPacket struct {
 	SrcHash      string   `json:"src_hash,omitempty"`
 	MAC          string   `json:"mac,omitempty"`
 	ExtraHash    string   `json:"extra_hash,omitempty"`
+	DecodedJSON  string   `json:"decoded_json,omitempty"`
 }
 
 // ParseMeshCorePacket extracts packet path byte size, payload type, repeater hops, and details from an MQTT message.
@@ -144,8 +150,29 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 				jsonHash = h
 			}
 
+			if txt, ok := jsonMap["text"].(string); ok && txt != "" {
+				parsed.DecryptedTxt = txt
+			} else if txt, ok := jsonMap["message"].(string); ok && txt != "" {
+				parsed.DecryptedTxt = txt
+			} else if txt, ok := jsonMap["msg"].(string); ok && txt != "" {
+				parsed.DecryptedTxt = txt
+			}
+
+			if snd, ok := jsonMap["sender"].(string); ok && snd != "" {
+				parsed.Sender = snd
+			} else if snd, ok := jsonMap["from"].(string); ok && snd != "" {
+				parsed.Sender = snd
+			}
+
+			if ch, ok := jsonMap["channel"].(string); ok && ch != "" {
+				parsed.ChannelName = ch
+			} else if ch, ok := jsonMap["chan"].(string); ok && ch != "" {
+				parsed.ChannelName = ch
+			}
+
 			if sc, ok := jsonMap["scope"].(string); ok && sc != "" {
 				parsed.Scope = strings.ToUpper(sc)
+				parsed.ScopeName = parsed.Scope
 				if strings.ToUpper(sc) != "MESH" && strings.ToUpper(sc) != "GLOBAL" {
 					parsed.Region = strings.ToUpper(sc)
 				}
@@ -153,6 +180,14 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 				if strings.ToUpper(rg) != "MESH" && strings.ToUpper(rg) != "GLOBAL" {
 					parsed.Region = strings.ToUpper(rg)
 				}
+			}
+
+			if snrVal, ok := jsonMap["snr"].(float64); ok {
+				parsed.SNR = &snrVal
+			}
+			if rssiVal, ok := jsonMap["rssi"].(float64); ok {
+				rssiInt := int(rssiVal)
+				parsed.RSSI = &rssiInt
 			}
 		}
 	} else {
@@ -173,6 +208,7 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 	}
 
 	parsed.RawHex = strings.ToUpper(rawHex)
+	parsed.PacketSize = len(buf)
 
 	// Header Byte 0: payloadType = (header >> 2) & 0x0F, routeType = header & 0x03
 	headerByte := buf[0]
@@ -237,6 +273,17 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		decodePayloadDetails(payloadType, payloadBuf, parsed)
 	}
 
+	// Fallback sender if not specified
+	if parsed.Sender == "" {
+		if parsed.AdvertName != "" {
+			parsed.Sender = parsed.AdvertName
+		} else if parsed.Origin != "" && parsed.Origin != "Observer" {
+			parsed.Sender = parsed.Origin
+		} else if parsed.SrcHash != "" {
+			parsed.Sender = parsed.SrcHash
+		}
+	}
+
 	// Sanitize Region
 	parsed.Region = strings.ToUpper(parsed.Region)
 	if parsed.Region == "" {
@@ -262,6 +309,41 @@ func ParseMeshCorePacket(topic string, rawPayload []byte) (*ParsedPacket, error)
 		parsed.Region = "IEG"
 	}
 
+	if parsed.ScopeName == "" {
+		parsed.ScopeName = parsed.Region
+	}
+
+	// Build a decoded JSON summary map
+	decodedMap := map[string]interface{}{
+		"type": parsed.TypeName,
+	}
+	if parsed.AdvertName != "" {
+		decodedMap["type"] = "ADVERT"
+		decodedMap["name"] = parsed.AdvertName
+		if parsed.AdvertKey != "" {
+			decodedMap["pubKey"] = parsed.AdvertKey
+		}
+		if parsed.Lat != 0 || parsed.Lon != 0 {
+			decodedMap["lat"] = parsed.Lat
+			decodedMap["lon"] = parsed.Lon
+		}
+	} else if parsed.ChannelName != "" && parsed.DecryptedTxt != "" {
+		decodedMap["type"] = "CHAN"
+		decodedMap["channel"] = parsed.ChannelName
+		decodedMap["sender"] = parsed.Sender
+		decodedMap["text"] = parsed.DecryptedTxt
+	} else if parsed.CtrlSubtype != "" {
+		decodedMap["type"] = "CONTROL"
+		decodedMap["ctrlSubtype"] = parsed.CtrlSubtype
+	} else if parsed.DestHash != "" && parsed.SrcHash != "" {
+		decodedMap["type"] = parsed.TypeName
+		decodedMap["destHash"] = parsed.DestHash
+		decodedMap["srcHash"] = parsed.SrcHash
+	}
+	if dj, err := json.Marshal(decodedMap); err == nil {
+		parsed.DecodedJSON = string(dj)
+	}
+
 	return parsed, nil
 }
 
@@ -269,11 +351,23 @@ func decodePayloadDetails(pType byte, payload []byte, pkt *ParsedPacket) {
 	switch pType {
 	case PayloadTypeAdvert:
 		parseAdvertPayload(payload, pkt)
-	case PayloadTypeReq, PayloadTypeResp, PayloadTypeTxtMsg:
+	case PayloadTypeReq, PayloadTypeResp:
 		if len(payload) >= 4 {
 			pkt.DestHash = strings.ToUpper(hex.EncodeToString(payload[0:1]))
 			pkt.SrcHash = strings.ToUpper(hex.EncodeToString(payload[1:2]))
 			pkt.MAC = strings.ToUpper(hex.EncodeToString(payload[2:4]))
+		}
+	case PayloadTypeTxtMsg:
+		if len(payload) >= 4 {
+			pkt.DestHash = strings.ToUpper(hex.EncodeToString(payload[0:1]))
+			pkt.SrcHash = strings.ToUpper(hex.EncodeToString(payload[1:2]))
+			pkt.MAC = strings.ToUpper(hex.EncodeToString(payload[2:4]))
+			if len(payload) > 4 {
+				txtStr := cleanUTF8String(payload[4:])
+				if txtStr != "" {
+					pkt.DecryptedTxt = txtStr
+				}
+			}
 		}
 	case PayloadTypeAck:
 		if len(payload) >= 4 {
@@ -287,7 +381,16 @@ func decodePayloadDetails(pType byte, payload []byte, pkt *ParsedPacket) {
 			ciphertext := payload[3:]
 
 			// Attempt AES-128-ECB channel decryption with known keys
-			knownChannels := []string{"#public", "Public", "#mesh", "mesh", "#wro", "#poz", "#ieg", "WRO", "POZ", "IEG"}
+			knownChannels := []string{
+				"#public", "Public", "public",
+				"#mesh", "mesh", "Mesh",
+				"#wro", "wro", "WRO",
+				"#poz", "poz", "POZ",
+				"#ieg", "ieg", "IEG",
+				"#pl", "pl", "PL",
+				"#global", "global", "Global",
+				"#polska", "polska", "Polska",
+			}
 			for _, chName := range knownChannels {
 				key := deriveChannelKey(chName)
 				if channelHashBytes(key) == channelHash {
@@ -295,10 +398,22 @@ func decodePayloadDetails(pType byte, payload []byte, pkt *ParsedPacket) {
 						if ts, sender, msg, err := parseChannelPlaintext(plain); err == nil {
 							_ = ts
 							pkt.ChannelName = chName
-							pkt.Sender = sender
+							if sender != "" {
+								pkt.Sender = sender
+							}
 							pkt.DecryptedTxt = msg
 							break
 						}
+					}
+				}
+			}
+
+			if pkt.DecryptedTxt == "" && len(ciphertext) > 0 {
+				plainTxt := cleanUTF8String(ciphertext)
+				if len(plainTxt) >= 2 && utf8.ValidString(plainTxt) {
+					pkt.DecryptedTxt = plainTxt
+					if pkt.ChannelName == "" {
+						pkt.ChannelName = "#public"
 					}
 				}
 			}
@@ -318,14 +433,11 @@ func decodePayloadDetails(pType byte, payload []byte, pkt *ParsedPacket) {
 }
 
 func parseAdvertPayload(payload []byte, pkt *ParsedPacket) {
-	// Standard MeshCore Advert format:
-	// If full length (>= 100 bytes): PubKey(32B), Timestamp(4B), Sig(64B), AppFlags(1B), [Lat(4B), Lon(4B)], Name(...)
 	if len(payload) >= 3 {
-		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3])) // 3-byte prefix (6 hex chars)
+		pkt.AdvertKey = strings.ToUpper(hex.EncodeToString(payload[:3]))
 	}
 
 	if len(payload) < 101 {
-		// Short or incomplete advert payload
 		if len(payload) > 4 {
 			nameStr := cleanUTF8String(payload[4:])
 			if nameStr != "" {
@@ -440,10 +552,8 @@ func parseChannelPlaintext(plaintext []byte) (timestamp uint32, sender string, m
 }
 
 func cleanUTF8String(b []byte) string {
-	// Trim trailing nulls and spaces
 	s := strings.Trim(string(b), "\x00\r\n ")
 	if !utf8.ValidString(s) {
-		// Replace invalid UTF-8 sequences
 		s = strings.ToValidUTF8(s, "")
 	}
 	return strings.TrimSpace(s)
