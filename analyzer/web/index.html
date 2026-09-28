@@ -3,169 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MeshCore MQTT Packet Analyzer & Parity Scope</title>
+  <title>MeshCore Packet Analyzer v1.0 [Win95 Retro Edition]</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Vis-Network for Topology Graph -->
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
-  <div class="app-container">
-    <!-- Header / Navbar -->
-    <header class="navbar">
-      <div class="nav-brand">
-        <div class="logo-icon">📡</div>
-        <div>
-          <h1 class="nav-title">MeshCore Analyzer</h1>
-          <p class="nav-subtitle" data-i18n="subtitle">Nasłuchiwanie MQTT & Analiza Topologii</p>
-        </div>
+  <div class="win-window">
+    <!-- Win95 Title Bar -->
+    <div class="win-titlebar">
+      <span>📡 MeshCore Analyzer v1.0 - [mIRC Packet Feed]</span>
+      <div class="win-titlebar-controls">
+        <button type="button" class="win-btn-box" id="openSettingsBtn" title="Ustawienia / Settings">⚙️</button>
+        <button type="button" class="win-btn-box" id="langToggleBtn" title="Język / Language">PL</button>
       </div>
+    </div>
 
-      <!-- Navigation Tabs -->
-      <nav class="nav-tabs">
-        <button type="button" class="tab-btn active" id="tabPacketsBtn" data-i18n="tabPackets">📡 Pakiety Live</button>
-        <button type="button" class="tab-btn" id="tabTopologyBtn" data-i18n="tabTopology">🗺️ Mapa Topologii</button>
-      </nav>
+    <!-- Win95 Menu Bar -->
+    <div class="win-menubar">
+      <span class="win-menu-item active" id="tabPacketsBtn" data-i18n="tabPackets">📡 Pakiety Live</span>
+      <span class="win-menu-item" id="tabTopologyBtn" data-i18n="tabTopology">🗺️ Mapa Topologii</span>
+      <span class="win-menu-item" id="openSettingsMenuBtn" data-i18n="settings">⚙️ Ustawienia</span>
+      <span class="win-menu-item" id="clearLogBtn" data-i18n="btnClearLog">🗑️ Wyczyść Ekran</span>
+    </div>
 
-      <div class="nav-actions">
-        <!-- Status Indicator -->
-        <div class="status-indicator" id="statusBadge">
-          <span class="status-dot disconnected" id="statusDot"></span>
-          <span id="statusText" data-i18n="statusConnecting">Łączenie z serwerem...</span>
-        </div>
-
-        <!-- Settings Button -->
-        <button type="button" class="btn btn-secondary" id="openSettingsModalBtn">
-          <span>⚙️</span> <span data-i18n="settings">Ustawienia</span>
-        </button>
-
-        <!-- Language Toggle -->
-        <div class="lang-toggle">
-          <button type="button" class="lang-btn active" id="langPlBtn">PL</button>
-          <button type="button" class="lang-btn" id="langEnBtn">EN</button>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="main-content">
-      <!-- Packets View -->
-      <section id="packetsView" class="view-section active">
-        <div class="split-layout detail-collapsed">
-          <div class="panel-left" id="pktLeft">
-            <div class="page-header">
-              <h2><span data-i18n="liveTitle">Ostatnie Odebrane Pakiety Live</span> <span class="count" id="pktCount">(0)</span></h2>
-              <div class="action-buttons">
-                <button type="button" class="btn btn-secondary btn-icon" id="pktRefreshBtn" title="Odśwież" data-i18n-title="refresh">🔄 <span data-i18n="btnRefresh">Odśwież</span></button>
-                <button type="button" class="btn btn-secondary btn-icon" id="pktPauseBtn" title="Pauza na żywo" data-i18n-title="pause">⏸️ <span data-i18n="btnPause">Pauza</span></button>
-                <button type="button" class="btn btn-primary btn-icon" id="pktByopBtn" title="Analiza własnego pakietu" data-i18n-title="byopTitle">📦 BYOP</button>
-              </div>
-            </div>
-
-            <!-- Packet Filter Expression -->
-            <div class="filter-group pkt-filter-expr">
-              <input type="text" id="packetFilterInput" class="packet-filter-input" placeholder="Filtr np: hash, typ, nazwa węzła, tekst wiadomości..." data-i18n-placeholder="filterPlaceholder" aria-label="Filtr pakietów">
-              <div id="packetFilterCount" class="filter-count-info hidden"></div>
-            </div>
-
-            <!-- Filter Bar -->
-            <div class="filter-bar" id="pktFilters">
-              <button type="button" class="btn btn-secondary filter-toggle-btn" id="filterToggleBtn" data-i18n="btnFilters">Filtry ▾</button>
-
-              <div class="filter-group filter-group-clear">
-                <button type="button" class="btn btn-clear-filters hidden" id="clearFiltersBtn" data-i18n="btnClearFilters">✕ Wyczyść</button>
-              </div>
-
-              <div class="filter-group filter-group-quick">
-                <input type="text" placeholder="Hash pakietu..." data-i18n-placeholder="phHash" id="fHash" aria-label="Hash pakietu">
-                <div class="node-filter-wrap">
-                  <input type="text" placeholder="Węzeł..." data-i18n-placeholder="phNode" id="fNode" autocomplete="off" aria-label="Węzeł">
-                  <div class="node-filter-dropdown hidden" id="fNodeDropdown"></div>
-                </div>
-              </div>
-
-              <div class="filter-group filter-group-toggles">
-                <button type="button" class="btn btn-secondary active" id="fGroup" data-i18n="btnGroupHash">Grupuj po hashu</button>
-                <select id="fTimeWindow" class="filter-select" aria-label="Przedział czasowy">
-                  <option value="15" data-i18n="tw15">Ostatnie 15 min</option>
-                  <option value="30" data-i18n="tw30">Ostatnie 30 min</option>
-                  <option value="60" data-i18n="tw60">Ostatnia 1 godz.</option>
-                  <option value="180" data-i18n="tw180">Ostatnie 3 godz.</option>
-                  <option value="1440" data-i18n="tw1440">Ostatnie 24 godz.</option>
-                  <option value="0" data-i18n="twAll">Wszystkie</option>
-                </select>
-              </div>
-
-              <div class="filter-group filter-group-dropdowns">
-                <div class="multi-select-wrap" id="observerFilterWrap">
-                  <button type="button" class="multi-select-trigger" id="observerTrigger" data-i18n="obsAll">Wszyscy Obserwatorzy ▾</button>
-                  <div class="multi-select-menu" id="observerMenu">
-                    <div class="multi-select-search-wrap">
-                      <input type="text" id="observerSearchInput" class="multi-select-search" placeholder="Szukaj obserwatora..." data-i18n-placeholder="phSearchObs">
-                    </div>
-                    <div class="multi-select-list" id="observerList"></div>
-                  </div>
-                </div>
-
-                <div class="multi-select-wrap" id="typeFilterWrap">
-                  <button type="button" class="multi-select-trigger" id="typeTrigger" data-i18n="typesAll">Wszystkie Typy ▾</button>
-                  <div class="multi-select-menu" id="typeMenu"></div>
-                </div>
-
-                <select id="fChannel" class="filter-select" aria-label="Kanał">
-                  <option value="" data-i18n="chanAll">Wszystkie Kanały</option>
-                </select>
-              </div>
-
-              <div class="filter-group filter-group-sort">
-                <select id="fObsSort" aria-label="Sortowanie obserwacji">
-                  <option value="observer" data-i18n="sortObs">Sortuj: Obserwator</option>
-                  <option value="path-asc" data-i18n="sortPathAsc">Sortuj: Ścieżka ↑ (najkrótsza)</option>
-                  <option value="path-desc" data-i18n="sortPathDesc">Sortuj: Ścieżka ↓ (najdłuższa)</option>
-                  <option value="chrono-asc" data-i18n="sortTimeAsc">Sortuj: Czas ↑ (najstarszy)</option>
-                  <option value="chrono-desc" data-i18n="sortTimeDesc">Sortuj: Czas ↓ (najnowszy)</option>
-                </select>
-                <button type="button" class="btn btn-secondary btn-icon" id="hexHashToggle" data-i18n="btnHexPaths">Hex Ścieżki</button>
-              </div>
-            </div>
-
-            <!-- Table Wrapper -->
-            <div class="table-fluid-wrap">
-              <table class="data-table packet-table" id="pktTable">
-                <thead>
-                  <tr>
-                    <th scope="col" class="col-expand"></th>
-                    <th scope="col" class="col-region" data-i18n="colScope">Scope</th>
-                    <th scope="col" class="col-time" data-i18n="colTime">Czas</th>
-                    <th scope="col" class="col-hash" data-i18n="colHash">Hash</th>
-                    <th scope="col" class="col-size" data-i18n="colSize">Rozmiar</th>
-                    <th scope="col" class="col-hashsize" data-i18n="colHB">HB</th>
-                    <th scope="col" class="col-type" data-i18n="colType">Typ</th>
-                    <th scope="col" class="col-observer" data-i18n="colOrigin">Obserwator / Nadawca</th>
-                    <th scope="col" class="col-path" data-i18n="colPath">Ścieżka</th>
-                    <th scope="col" class="col-rpt" data-i18n="colRpt">Ilość</th>
-                    <th scope="col" class="col-details" data-i18n="colDetails">Szczegóły</th>
-                  </tr>
-                </thead>
-                <tbody id="pktBody">
-                  <!-- Empty state / Dynamic rows -->
-                </tbody>
-              </table>
-
-              <div class="empty-state" id="emptyState">
-                <div class="empty-icon">📻</div>
-                <h3 data-i18n="emptyTitle">Oczekiwanie na pakiety MeshCore...</h3>
-                <p data-i18n="emptyDesc">Gdy w sieci MQTT pojawią się pakiety, zostaną automatycznie wyświetlone na tej liście.</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Detail Sidebar / Right Panel -->
-          <div class="panel-right empty" id="pktRight">
-            <button type="button" class="panel-close-btn" id="closeDetailBtn" title="Zamknij panel">&times;</button>
-            <span data-i18n="selectPacketPrompt">Wybierz pakiet z listy, aby zobaczyć jego pełne szczegóły.</span>
-          </div>
+    <!-- Main Body -->
+    <div class="win-body">
+      <!-- Packets View: mIRC-style continuous text stream -->
+      <section id="packetsView" class="view-section">
+        <div class="mirc-container" id="pktLog">
+          <!-- Continuous line-by-line packet log stream -->
         </div>
       </section>
 
@@ -173,98 +40,101 @@
       <section id="topologyView" class="view-section hidden">
         <div class="topology-container">
           <div class="topology-sidebar">
-            <h3 data-i18n="nodeInfoTitle">Informacje o Węźle</h3>
-            <div id="nodeInfoBox" class="node-info-box">
-              <p class="text-muted" data-i18n="nodeInfoPlaceholder">Kliknij węzeł na mapie, aby zobaczyć jego właściwości.</p>
+            <h4 data-i18n="nodeInfoTitle">Informacje o Węźle</h4>
+            <div id="nodeInfoBox" style="margin-top: 6px;">
+              <p style="color: var(--win-text-muted);" data-i18n="nodeInfoPlaceholder">Kliknij węzeł na mapie, aby zobaczyć jego właściwości.</p>
             </div>
           </div>
-
           <div class="topology-graph-wrapper">
             <div id="topologyNetwork" class="topology-network"></div>
-            <div class="graph-legend">
-              <div class="legend-item"><span class="legend-color node-known"></span> <span data-i18n="legendAdvert">Known Advert Node</span></div>
-              <div class="legend-item"><span class="legend-color node-hop"></span> <span data-i18n="legendHop">Hop Node</span></div>
-              <div class="legend-item"><span class="legend-color edge-fresh"></span> <span data-i18n="legendFresh">&lt; 5 min</span></div>
-              <div class="legend-item"><span class="legend-color edge-stale"></span> <span data-i18n="legendStale">&gt; 1 godz.</span></div>
-            </div>
           </div>
         </div>
       </section>
-    </main>
+    </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <p>MeshCore Packet Path Analyzer &bull; Topology Mapper</p>
-    </footer>
+    <!-- Win95 Statusbar -->
+    <div class="win-statusbar">
+      <div class="win-status-pane" id="statusPane" data-i18n="statusConnecting">Łączenie z serwerem WS...</div>
+      <div class="win-status-pane" id="countPane">Pakiety: 0</div>
+      <div class="win-status-pane">MeshCore IRC Gateway v1.0</div>
+    </div>
   </div>
 
-  <!-- Settings Modal -->
-  <div class="modal-overlay hidden" id="settingsModal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 data-i18n="settingsTitle">Ustawienia i Konfiguracja</h3>
-        <button type="button" class="modal-close" id="closeSettingsModalBtn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <!-- MQTT Servers Section -->
-        <h4 data-i18n="mqttServersTitle">Zarządzanie Serwerami MQTT</h4>
-        <form id="addBrokerForm" class="broker-form" style="margin-top: 10px;">
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label for="inputHost" data-i18n="labelHost">Adres serwera (Host / IP)</label>
-              <input type="text" id="inputHost" placeholder="mqtt.marwoj.net" required>
-            </div>
-            <div class="form-group flex-1">
-              <label for="inputPort" data-i18n="labelPort">Port</label>
-              <input type="number" id="inputPort" placeholder="1883" value="1883" required>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label for="inputUser" data-i18n="labelUser">Użytkownik (opcjonalnie)</label>
-              <input type="text" id="inputUser" placeholder="username">
-            </div>
-            <div class="form-group flex-1">
-              <label for="inputPass" data-i18n="labelPass">Hasło (opcjonalnie)</label>
-              <input type="password" id="inputPass" placeholder="••••••••">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="inputTopic" data-i18n="labelTopic">Temat MQTT (Topic)</label>
-            <input type="text" id="inputTopic" placeholder="meshcore/#" value="meshcore/#" required>
-          </div>
-
-          <button type="submit" class="btn btn-primary" style="width: 100%;" data-i18n="btnAddServer">Połącz i Dodaj Serwer</button>
-        </form>
-
-        <div id="brokersList" class="brokers-list" style="margin-top: 14px;">
-          <!-- Active broker items -->
+  <!-- Notepad-Style Packet Detail Modal -->
+  <div class="win-modal-overlay hidden" id="notepadModal">
+    <div class="win-modal-card">
+      <div class="win-titlebar">
+        <span>Notepad.exe - [Szczegóły Pakietu]</span>
+        <div class="win-titlebar-controls">
+          <button type="button" class="win-btn-box" id="closeNotepadBtn">&times;</button>
         </div>
-
-        <hr class="modal-divider">
-
-        <!-- Database Cleanup -->
-        <h4 data-i18n="dbCleanupTitle">Zarządzanie Bazą Danych</h4>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="dbCleanupDesc">Czyszczenie usunie zapisane pakiety, słownik węzłów z Advertów oraz krawędzie topologii.</p>
-        <button type="button" class="btn btn-danger" id="clearDbBtn" style="width: 100%;" data-i18n="btnClearDb">🗑️ Wyczyść Wszystkie Dane Topologii</button>
+      </div>
+      <div style="padding: 6px; background-color: var(--win-bg);">
+        <textarea id="notepadText" class="notepad-textarea" readonly spellcheck="false"></textarea>
+        <div style="margin-top: 6px; text-align: right;">
+          <button type="button" class="win-btn" id="closeNotepadOkBtn">OK</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- BYOP Modal -->
-  <div class="modal-overlay hidden" id="byopModal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 data-i18n="byopTitle">📦 BYOP - Analiza Własnego Pakietu</h3>
-        <button type="button" class="modal-close" id="closeByopModalBtn">&times;</button>
+  <!-- Settings & Filters Modal -->
+  <div class="win-modal-overlay hidden" id="settingsModal">
+    <div class="win-modal-card">
+      <div class="win-titlebar">
+        <span data-i18n="settingsTitle">Ustawienia i Filtry Systemowe</span>
+        <div class="win-titlebar-controls">
+          <button type="button" class="win-btn-box" id="closeSettingsModalBtn">&times;</button>
+        </div>
       </div>
-      <div class="modal-body">
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="byopDesc">Wklej surowy ciąg HEX pakietu z radia lub MQTT, aby przeprowadzić pełne dekodowanie i analizę bajt po bajcie:</p>
-        <textarea id="byopHexInput" class="form-control code-font" style="width: 100%; height: 90px; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main);" placeholder="np. 15C31A8D4674FEAE37..."></textarea>
-        <button type="button" class="btn btn-primary" id="byopDecodeBtn" style="width: 100%; margin-top: 10px;" data-i18n="btnDecode">Dekoduj Pakiet</button>
-        <div id="byopResult" style="margin-top: 14px;"></div>
+      <div style="padding: 10px; background-color: var(--win-bg); font-size: 11px;">
+        <fieldset style="border: 1px solid var(--win-border-dark); padding: 8px; margin-bottom: 8px;">
+          <legend style="padding: 0 4px; font-weight: bold;" data-i18n="filterTitle">Filtrowanie i Grupowanie</legend>
+
+          <div style="margin-bottom: 6px;">
+            <label><input type="checkbox" id="groupByHashToggle" checked> <span data-i18n="btnGroupHash">Grupuj pakiety po hashu</span></label>
+          </div>
+
+          <div style="margin-bottom: 6px;">
+            <label data-i18n="labelTimeWindow">Przedział czasowy:</label>
+            <select id="fTimeWindow" class="win-select">
+              <option value="15" data-i18n="tw15">Ostatnie 15 min</option>
+              <option value="30" data-i18n="tw30">Ostatnie 30 min</option>
+              <option value="60" data-i18n="tw60">Ostatnia 1 godz.</option>
+              <option value="180" data-i18n="tw180">Ostatnie 3 godz.</option>
+              <option value="1440" data-i18n="tw1440">Ostatnie 24 godz.</option>
+              <option value="0" data-i18n="twAll">Wszystkie</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 6px;">
+            <label data-i18n="labelChanFilter">Filtr kanału:</label>
+            <input type="text" id="fChannel" class="win-input" placeholder="#public, #wro..." style="width: 100%;">
+          </div>
+
+          <div>
+            <label data-i18n="labelHashFilter">Filtr hashu / nadawcy:</label>
+            <input type="text" id="fHash" class="win-input" placeholder="Hash pakietu lub nadawca..." style="width: 100%;">
+          </div>
+        </fieldset>
+
+        <fieldset style="border: 1px solid var(--win-border-dark); padding: 8px; margin-bottom: 8px;">
+          <legend style="padding: 0 4px; font-weight: bold;" data-i18n="mqttServersTitle">Serwery MQTT</legend>
+          <form id="addBrokerForm" style="display: flex; flex-direction: column; gap: 4px;">
+            <input type="text" id="inputHost" class="win-input" placeholder="Host: mqtt.marwoj.net" required>
+            <div style="display: flex; gap: 4px;">
+              <input type="number" id="inputPort" class="win-input" placeholder="1883" value="1883" style="width: 70px;">
+              <input type="text" id="inputTopic" class="win-input" placeholder="Topic: meshcore/#" value="meshcore/#" style="flex: 1;">
+            </div>
+            <button type="submit" class="win-btn" style="margin-top: 4px;" data-i18n="btnAddServer">Dodaj Serwer MQTT</button>
+          </form>
+          <div id="brokersList" style="margin-top: 6px; max-height: 100px; overflow-y: auto;"></div>
+        </fieldset>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+          <button type="button" class="win-btn" id="clearDbBtn" style="color: #800000;" data-i18n="btnClearDb">🗑️ Wyczyść Bazę Danych</button>
+          <button type="button" class="win-btn" id="closeSettingsOkBtn">Zamknij</button>
+        </div>
       </div>
     </div>
   </div>
