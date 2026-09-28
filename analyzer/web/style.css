@@ -1,4 +1,4 @@
-/* === Retro Windows 95 / 90s Web Styling for MeshCore Analyzer === */
+/* === Retro Windows 95 / mIRC 32-bit Classic Styling === */
 :root {
   --win-bg: #c0c0c0;
   --win-border-light: #ffffff;
@@ -12,9 +12,9 @@
   --win-link: #0000ff;
   --mirc-chat-text: #000000;
   --mirc-chat-bg: #ffffff;
-  --mirc-dimmed-text: #666666;
+  --mirc-dimmed-text: #008000; /* Classic mIRC green system notices */
   --mirc-chan-color: #008000;
-  --mirc-nick-color: #800000;
+  --mirc-nick-color: #000080;
   --font-main: "MS Sans Serif", "Tahoma", "Arial", sans-serif;
   --font-code: "Courier New", "Consolas", monospace;
 }
@@ -31,7 +31,7 @@ body {
   font-family: var(--font-main);
   font-size: 11px;
   min-height: 100vh;
-  padding: 10px;
+  padding: 6px;
 }
 
 .hidden {
@@ -50,7 +50,7 @@ body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  min-height: 95vh;
+  min-height: 96vh;
 }
 
 /* Title Bar */
@@ -98,7 +98,7 @@ body {
   display: flex;
   gap: 12px;
   background-color: var(--win-bg);
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-bottom: 1px solid var(--win-border-dark);
 }
 
@@ -113,37 +113,80 @@ body {
   color: #ffffff;
 }
 
+/* Iconic mIRC Toolbar */
+.mirc-toolbar {
+  display: flex;
+  gap: 4px;
+  background-color: var(--win-bg);
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--win-border-dark);
+  align-items: center;
+}
+
+.mirc-tool-btn {
+  background-color: var(--win-bg);
+  border-top: 1px solid var(--win-border-light);
+  border-left: 1px solid var(--win-border-light);
+  border-right: 1px solid var(--win-border-black);
+  border-bottom: 1px solid var(--win-border-black);
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.mirc-tool-btn:active, .mirc-tool-btn.active {
+  border-top: 1px solid var(--win-border-black);
+  border-left: 1px solid var(--win-border-black);
+  border-right: 1px solid var(--win-border-light);
+  border-bottom: 1px solid var(--win-border-light);
+  background-color: #e0e0e0;
+}
+
 /* Main Body Area */
 .win-body {
-  padding: 8px;
+  padding: 6px;
   flex: 1;
   display: flex;
   flex-direction: column;
 }
 
-/* mIRC Style Packet Log Container */
+/* mIRC Dual-Pane Chat Layout */
+.mirc-main-layout {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-height: 550px;
+}
+
+/* mIRC Packet Log Container */
 .mirc-container {
-  background-color: var(--mirc-chat-bg);
+  background-color: #ffffff;
   border-top: 2px solid var(--win-border-black);
   border-left: 2px solid var(--win-border-black);
   border-right: 2px solid var(--win-border-light);
   border-bottom: 2px solid var(--win-border-light);
   box-shadow: inset 1px 1px var(--win-border-dark);
-  padding: 8px;
+  padding: 4px;
   flex: 1;
   overflow-y: auto;
   font-family: var(--font-code);
   font-size: 12px;
-  line-height: 1.4;
-  height: 600px;
+  line-height: 1.25;
 }
 
+/* mIRC Line Stacking */
 .mirc-line {
-  padding: 2px 4px;
+  padding: 1px 2px;
   cursor: pointer;
-  white-space: pre-wrap;
+  white-space: pre;
   word-break: break-all;
-  border-bottom: 1px dotted #e0e0e0;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 .mirc-line:hover {
@@ -151,31 +194,71 @@ body {
   color: #ffffff !important;
 }
 
-.mirc-line:hover .mirc-time,
-.mirc-line:hover .mirc-chan,
-.mirc-line:hover .mirc-sender,
-.mirc-line:hover .mirc-path {
+.mirc-line:hover span {
   color: #ffffff !important;
 }
 
 /* Active chat message lines */
 .mirc-chat {
-  color: var(--mirc-chat-text);
-  font-weight: 600;
+  color: #000000;
 }
 
-/* Dimmed system packet lines */
-.mirc-dimmed {
-  color: var(--mirc-dimmed-text);
-  font-style: italic;
+/* System notices / non-chat packets */
+.mirc-sys {
+  color: #008000; /* Classic mIRC green notification */
+  font-weight: normal;
 }
 
-.mirc-time { color: #000080; font-weight: normal; }
-.mirc-type { color: #800080; font-weight: bold; }
-.mirc-chan { color: var(--mirc-chan-color); font-weight: bold; }
-.mirc-sender { color: var(--mirc-nick-color); font-weight: bold; }
-.mirc-msg { color: #000000; }
+.mirc-time { color: #808080; }
+.mirc-chan { color: #008000; font-weight: bold; }
+.mirc-nick { color: #000080; font-weight: bold; }
+.mirc-scope { color: #800080; font-weight: bold; }
 .mirc-path { color: #008080; }
+
+/* mIRC Right Side Nicklist / Channel List */
+.mirc-nicklist {
+  width: 180px;
+  background-color: #ffffff;
+  border-top: 2px solid var(--win-border-black);
+  border-left: 2px solid var(--win-border-black);
+  border-right: 2px solid var(--win-border-light);
+  border-bottom: 2px solid var(--win-border-light);
+  box-shadow: inset 1px 1px var(--win-border-dark);
+  padding: 2px;
+  overflow-y: auto;
+  font-family: var(--font-main);
+  font-size: 11px;
+}
+
+.nicklist-header {
+  background-color: #000080;
+  color: #ffffff;
+  font-weight: bold;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.nicklist-item {
+  padding: 2px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nicklist-item:hover, .nicklist-item.selected {
+  background-color: #000080;
+  color: #ffffff;
+}
+
+.nicklist-item.channel-item {
+  font-weight: bold;
+  color: #008000;
+}
+
+.nicklist-item.channel-item:hover, .nicklist-item.channel-item.selected {
+  color: #ffffff;
+}
 
 /* Classic Win95 Buttons & Controls */
 .win-btn {

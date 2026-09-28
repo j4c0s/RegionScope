@@ -70,13 +70,12 @@
   let currentLang = localStorage.getItem('mc_analyzer_lang') || 'pl';
   let groupByHash = localStorage.getItem('mc_group_by_hash') !== 'false';
   let timeWindow = parseInt(localStorage.getItem('mc_time_window') || '15', 10);
-  let filterChannel = '';
+  let selectedChannel = 'ALL';
   let filterHash = '';
 
   let rawPackets = [];
   let brokers = [];
   let topologyData = { nodes: [], edges: [] };
-  let expandedClusters = new Set();
   let ws = null;
 
   // Vis.js Network instance
@@ -111,6 +110,15 @@
   const fChannel = document.getElementById('fChannel');
   const fHash = document.getElementById('fHash');
   const nodeInfoBox = document.getElementById('nodeInfoBox');
+  const nickListContainer = document.getElementById('nickListContainer');
+  const dynamicNickList = document.getElementById('dynamicNickList');
+  const mircServerStatus = document.getElementById('mircServerStatus');
+
+  // Toolbar buttons
+  const tbConnectBtn = document.getElementById('tbConnectBtn');
+  const tbChannelsBtn = document.getElementById('tbChannelsBtn');
+  const tbClearBtn = document.getElementById('tbClearBtn');
+  const tbSettingsBtn = document.getElementById('tbSettingsBtn');
 
   // --- View Switcher ---
   tabPacketsBtn.addEventListener('click', () => switchTab('packets'));
@@ -158,6 +166,19 @@
     applyLanguage(currentLang === 'pl' ? 'en' : 'pl');
   });
 
+  // --- Toolbar Handlers ---
+  tbConnectBtn.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.close();
+    } else {
+      connectWebSocket();
+    }
+  });
+
+  tbChannelsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+  tbClearBtn.addEventListener('click', () => clearLog());
+  tbSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+
   // --- Settings Modal ---
   openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
   openSettingsMenuBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
@@ -168,11 +189,13 @@
   closeNotepadBtn.addEventListener('click', () => notepadModal.classList.add('hidden'));
   closeNotepadOkBtn.addEventListener('click', () => notepadModal.classList.add('hidden'));
 
-  clearLogBtn.addEventListener('click', () => {
+  clearLogBtn.addEventListener('click', () => clearLog());
+
+  function clearLog() {
     pktLog.innerHTML = '';
     rawPackets = [];
     countPane.textContent = `Pakiety: 0`;
-  });
+  }
 
   groupByHashToggle.checked = groupByHash;
   groupByHashToggle.addEventListener('change', (e) => {
@@ -188,15 +211,42 @@
     fetchPackets();
   });
 
-  fChannel.addEventListener('input', debounce((e) => {
-    filterChannel = e.target.value.trim().toLowerCase();
-    renderPacketLog();
-  }, 300));
+  if (fChannel) {
+    fChannel.addEventListener('input', debounce((e) => {
+      selectedChannel = e.target.value.trim() || 'ALL';
+      updateNicklistSelection();
+      renderPacketLog();
+    }, 300));
+  }
 
   fHash.addEventListener('input', debounce((e) => {
     filterHash = e.target.value.trim().toLowerCase();
     renderPacketLog();
   }, 300));
+
+  // --- Nicklist Channel Select ---
+  nickListContainer.addEventListener('click', (e) => {
+    const item = e.target.closest('.nicklist-item');
+    if (!item) return;
+
+    const chan = item.getAttribute('data-chan');
+    if (chan) {
+      selectedChannel = chan;
+      if (fChannel) fChannel.value = chan === 'ALL' ? '' : chan;
+      updateNicklistSelection();
+      renderPacketLog();
+    }
+  });
+
+  function updateNicklistSelection() {
+    nickListContainer.querySelectorAll('.nicklist-item').forEach(el => {
+      if (el.getAttribute('data-chan') === selectedChannel) {
+        el.classList.add('selected');
+      } else {
+        el.classList.remove('selected');
+      }
+    });
+  }
 
   addBrokerForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -290,16 +340,25 @@
     const t = translations[currentLang];
     if (state === 'connected') {
       statusPane.textContent = t.statusConnected;
+      mircServerStatus.textContent = 'Status: Connected to MeshCore Gateway';
+      mircServerStatus.style.color = '#008000';
+      tbConnectBtn.textContent = '⚡ Disconnect';
     } else if (state === 'connecting') {
       statusPane.textContent = t.statusConnecting;
+      mircServerStatus.textContent = 'Status: Connecting...';
+      mircServerStatus.style.color = '#808000';
+      tbConnectBtn.textContent = '⚡ Connecting';
     } else {
       statusPane.textContent = t.statusDisconnected;
+      mircServerStatus.textContent = 'Status: Disconnected';
+      mircServerStatus.style.color = '#800000';
+      tbConnectBtn.textContent = '⚡ Connect';
     }
   }
 
   function handleIncomingPacket(pkt) {
-    rawPackets.unshift(pkt);
-    if (rawPackets.length > 500) rawPackets.pop();
+    rawPackets.push(pkt);
+    if (rawPackets.length > 500) rawPackets.shift();
     renderPacketLog();
   }
 
@@ -312,7 +371,7 @@
       }
       const res = await fetch(url);
       const data = await res.json();
-      rawPackets = data.packets || [];
+      rawPackets = (data.packets || []).reverse(); // oldest first for mIRC log flow
       renderPacketLog();
     } catch (err) {}
   }
@@ -330,15 +389,42 @@
         map.set(key, { ...p, latest: p.timestamp, count: 1 });
       }
     }
-    return Array.from(map.values()).sort((a, b) => (b.latest || '').localeCompare(a.latest || ''));
+    return Array.from(map.values()).sort((a, b) => (a.latest || '').localeCompare(b.latest || ''));
   }
 
-  // --- Render mIRC-Style Packet Log Stream ---
+  // --- Update Dynamic Sender List in Nicklist ---
+  function updateDynamicNicklist() {
+    const senders = new Set();
+    for (const p of rawPackets) {
+      if (p.sender) senders.add(p.sender);
+      else if (p.origin) senders.add(p.origin);
+      else if (p.advert_name) senders.add(p.advert_name);
+    }
+
+    if (senders.size === 0) {
+      dynamicNickList.innerHTML = `<div class="nicklist-item" style="color:var(--win-text-muted);">Brak węzłów</div>`;
+      return;
+    }
+
+    dynamicNickList.innerHTML = Array.from(senders).slice(0, 30).map(s => `
+      <div class="nicklist-item" data-chan="${escapeHtml(s)}">@${escapeHtml(s)}</div>
+    `).join('');
+  }
+
+  // --- Render mIRC-Style Single-Line Packet Feed ---
   function renderPacketLog() {
     let displayList = rawPackets;
 
-    if (filterChannel) {
-      displayList = displayList.filter(p => (p.channel_name || '').toLowerCase().includes(filterChannel));
+    // Filter by Nicklist / Channel selection
+    if (selectedChannel && selectedChannel !== 'ALL') {
+      const target = selectedChannel.toLowerCase();
+      displayList = displayList.filter(p =>
+        (p.channel_name || '').toLowerCase().includes(target) ||
+        (p.sender || '').toLowerCase().includes(target) ||
+        (p.origin || '').toLowerCase().includes(target) ||
+        (p.advert_name || '').toLowerCase().includes(target) ||
+        (p.region || '').toLowerCase().includes(target)
+      );
     }
 
     if (filterHash) {
@@ -350,9 +436,10 @@
     }
 
     countPane.textContent = `Pakiety: ${displayList.length}`;
+    updateDynamicNicklist();
 
     if (displayList.length === 0) {
-      pktLog.innerHTML = `<div class="mirc-line mirc-dimmed">* Brak pakietów do wyświetlenia w logu mIRC.</div>`;
+      pktLog.innerHTML = `<div class="mirc-line mirc-sys">*** Brak pakietów odpowiadających wybranym kryteriom w logu mIRC.</div>`;
       return;
     }
 
@@ -365,30 +452,30 @@
       const countBadge = p.count > 1 ? ` (x${p.count})` : '';
 
       // Check if packet contains plaintext chat message
-      const isChatMessage = p.channel_name && p.decrypted_txt;
+      const isChatMessage = (p.channel_name && p.decrypted_txt) || p.payload_type === 0x05 || p.payload_type === 0x02;
 
-      if (isChatMessage) {
-        // Prominent chat message line
-        const chanStr = `[${escapeHtml(p.channel_name)}]`;
-        const senderStr = p.sender ? `<${escapeHtml(p.sender)}>` : `<${escapeHtml(p.origin || 'Anon')}>`;
-        const msgStr = escapeHtml(p.decrypted_txt);
+      if (isChatMessage && p.decrypted_txt) {
+        // Prominent mIRC chat message line
+        const chanStr = p.channel_name ? `[${p.channel_name}]` : `[#chat]`;
+        const senderStr = p.sender || p.origin || 'Anon';
+        const msgStr = p.decrypted_txt;
 
         return `
           <div class="mirc-line mirc-chat" data-query="${escapeHtml(p.hash || String(p.id))}">
-            <span class="mirc-time">[${timeStr}]</span> <span class="mirc-type">${p.type_name}</span> | <span class="mirc-chan">${chanStr}[${scopeStr}]</span> | <span class="mirc-sender">${senderStr}</span>: <span class="mirc-msg">${msgStr}</span>${countBadge} | <span class="mirc-path">${pathSize}B path: ${pathStr}</span>
+            <span class="mirc-time">[${timeStr}]</span> <span class="mirc-nick">&lt;${escapeHtml(senderStr)}&gt;</span> <span class="mirc-chan">${escapeHtml(chanStr)}</span>: <span class="mirc-msg">${escapeHtml(msgStr)}</span>${countBadge} | <span class="mirc-path">${pathSize}B path: ${pathStr}</span>
           </div>
         `;
       } else {
-        // Dimmed system log line for non-chat packets (ADVERT, ACK, REQ, RESP, CONTROL, etc.)
+        // Classic mIRC green system notice line (*** ADVERT, ACK, REQ, RESP, CONTROL, etc.)
         let infoParts = [];
         if (p.advert_name) infoParts.push(`Advert: ${p.advert_name}`);
         if (p.ctrl_subtype) infoParts.push(`Ctrl: ${p.ctrl_subtype}`);
         if (p.dest_hash && p.src_hash) infoParts.push(`${p.src_hash} -> ${p.dest_hash}`);
-        if (infoParts.length === 0) infoParts.push(p.origin || p.observer || 'System');
+        if (infoParts.length === 0) infoParts.push(`Node ${p.origin || p.observer || 'Unknown'}`);
 
         return `
-          <div class="mirc-line mirc-dimmed" data-query="${escapeHtml(p.hash || String(p.id))}">
-            <span class="mirc-time">[${timeStr}]</span> * <span class="mirc-type">${p.type_name}</span> [${scopeStr}] | <span class="mirc-msg">${escapeHtml(infoParts.join(' | '))}${countBadge}</span> | <span class="mirc-path">${pathSize}B path: ${pathStr}</span>
+          <div class="mirc-line mirc-sys" data-query="${escapeHtml(p.hash || String(p.id))}">
+            <span class="mirc-time">[${timeStr}]</span> *** <span class="mirc-chan">${p.type_name}</span> [<span class="mirc-scope">${scopeStr}</span>] | ${escapeHtml(infoParts.join(' | '))}${countBadge} | <span class="mirc-path">${pathSize}B path: ${pathStr}</span>
           </div>
         `;
       }
@@ -398,6 +485,9 @@
     pktLog.querySelectorAll('.mirc-line[data-query]').forEach(line => {
       rowClickToNotepad(line);
     });
+
+    // Auto-scroll to bottom of chat log stream
+    pktLog.scrollTop = pktLog.scrollHeight;
   }
 
   function rowClickToNotepad(element) {
