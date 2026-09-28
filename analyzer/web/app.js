@@ -340,7 +340,7 @@
     const t = translations[currentLang];
     if (state === 'connected') {
       statusPane.textContent = t.statusConnected;
-      mircServerStatus.textContent = 'Status: Connected to MeshCore Gateway';
+      mircServerStatus.textContent = 'Status: Connected to MeshRC Gateway';
       mircServerStatus.style.color = '#008000';
       tbConnectBtn.textContent = '⚡ Disconnect';
     } else if (state === 'connecting') {
@@ -371,7 +371,7 @@
       }
       const res = await fetch(url);
       const data = await res.json();
-      rawPackets = (data.packets || []).reverse(); // oldest first for mIRC log flow
+      rawPackets = (data.packets || []).reverse(); // oldest first for mIRC wall of text flow
       renderPacketLog();
     } catch (err) {}
   }
@@ -411,7 +411,7 @@
     `).join('');
   }
 
-  // --- Render mIRC-Style Single-Line Packet Feed ---
+  // --- Render Dense mIRC Wall of Text Stream ---
   function renderPacketLog() {
     let displayList = rawPackets;
 
@@ -439,7 +439,7 @@
     updateDynamicNicklist();
 
     if (displayList.length === 0) {
-      pktLog.innerHTML = `<div class="mirc-line mirc-sys">*** Brak pakietów odpowiadających wybranym kryteriom w logu mIRC.</div>`;
+      pktLog.innerHTML = `<div class="mirc-line mirc-line-sys"><span class="mirc-sys-star">***</span> Brak pakietów w buforze MeshRC.</div>`;
       return;
     }
 
@@ -447,37 +447,31 @@
       const timeStr = formatTime(p.latest || p.timestamp);
       const hopsList = p.resolved_hops && p.resolved_hops.length > 0 ? p.resolved_hops : p.hops;
       const pathSize = p.path_byte_size || 1;
-      const pathStr = hopsList && hopsList.length > 0 ? hopsList.join(' -> ') : 'Direct';
+      const pathStr = hopsList && hopsList.length > 0 ? hopsList.join('->') : 'Direct';
       const scopeStr = p.scope_name || p.region || 'MESH';
       const countBadge = p.count > 1 ? ` (x${p.count})` : '';
 
-      // Check if packet contains plaintext chat message
-      const isChatMessage = (p.channel_name && p.decrypted_txt) || p.payload_type === 0x05 || p.payload_type === 0x02;
+      // Check if packet contains user text / chat message
+      const hasChatText = p.decrypted_txt || p.payload_type === 0x05 || p.payload_type === 0x02;
 
-      if (isChatMessage && p.decrypted_txt) {
-        // Prominent mIRC chat message line
+      if (hasChatText && p.decrypted_txt) {
+        // Plaintext mIRC chat line: [12:34:56.789] <Sender> [#chan]: message text (x2) | 3B path: A1->B2
         const chanStr = p.channel_name ? `[${p.channel_name}]` : `[#chat]`;
-        const senderStr = p.sender || p.origin || 'Anon';
-        const msgStr = p.decrypted_txt;
+        const senderStr = p.sender || p.origin || p.advert_name || 'Anon';
 
-        return `
-          <div class="mirc-line mirc-chat" data-query="${escapeHtml(p.hash || String(p.id))}">
-            <span class="mirc-time">[${timeStr}]</span> <span class="mirc-nick">&lt;${escapeHtml(senderStr)}&gt;</span> <span class="mirc-chan">${escapeHtml(chanStr)}</span>: <span class="mirc-msg">${escapeHtml(msgStr)}</span>${countBadge} | <span class="mirc-path">${pathSize}B path: ${pathStr}</span>
-          </div>
-        `;
+        return `<div class="mirc-line mirc-line-chat" data-query="${escapeHtml(p.hash || String(p.id))}"><span class="mirc-ts">[${timeStr}]</span> <span class="mirc-nick">&lt;${escapeHtml(senderStr)}&gt;</span> <span class="mirc-chan">${escapeHtml(chanStr)}</span>: <span class="mirc-text">${escapeHtml(p.decrypted_txt)}</span><span class="mirc-meta">${countBadge} | ${pathSize}B path: ${pathStr}</span></div>`;
       } else {
-        // Classic mIRC green system notice line (*** ADVERT, ACK, REQ, RESP, CONTROL, etc.)
+        // mIRC green system notice line: [12:34:56.789] *** TYPE [SCOPE] | Node_Or_Detail (x3) | 3B path: A1->B2
         let infoParts = [];
-        if (p.advert_name) infoParts.push(`Advert: ${p.advert_name}`);
-        if (p.ctrl_subtype) infoParts.push(`Ctrl: ${p.ctrl_subtype}`);
-        if (p.dest_hash && p.src_hash) infoParts.push(`${p.src_hash} -> ${p.dest_hash}`);
-        if (infoParts.length === 0) infoParts.push(`Node ${p.origin || p.observer || 'Unknown'}`);
+        if (p.advert_name) infoParts.push(`Node ${p.advert_name}`);
+        else if (p.sender) infoParts.push(`Node ${p.sender}`);
+        else if (p.origin && p.origin !== 'Observer') infoParts.push(`Node ${p.origin}`);
 
-        return `
-          <div class="mirc-line mirc-sys" data-query="${escapeHtml(p.hash || String(p.id))}">
-            <span class="mirc-time">[${timeStr}]</span> *** <span class="mirc-chan">${p.type_name}</span> [<span class="mirc-scope">${scopeStr}</span>] | ${escapeHtml(infoParts.join(' | '))}${countBadge} | <span class="mirc-path">${pathSize}B path: ${pathStr}</span>
-          </div>
-        `;
+        if (p.ctrl_subtype) infoParts.push(`Ctrl: ${p.ctrl_subtype}`);
+        if (p.dest_hash && p.src_hash) infoParts.push(`${p.src_hash}->${p.dest_hash}`);
+        if (infoParts.length === 0) infoParts.push(`Node ${p.observer || 'Unknown'}`);
+
+        return `<div class="mirc-line mirc-line-sys" data-query="${escapeHtml(p.hash || String(p.id))}"><span class="mirc-ts">[${timeStr}]</span> <span class="mirc-sys-star">***</span> <span class="mirc-chan">${p.type_name}</span> [<span class="mirc-chan">${scopeStr}</span>] | <span class="mirc-text">${escapeHtml(infoParts.join(' | '))}</span><span class="mirc-meta">${countBadge} | ${pathSize}B path: ${pathStr}</span></div>`;
       }
     }).join('');
 

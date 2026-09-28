@@ -1,4 +1,4 @@
-/* === Retro Windows 95 / mIRC 32-bit Classic Styling === */
+/* === Retro Windows 95 / MeshRC mIRC Classic Styling === */
 :root {
   --win-bg: #c0c0c0;
   --win-border-light: #ffffff;
@@ -10,13 +10,9 @@
   --win-text-muted: #555555;
   --win-input-bg: #ffffff;
   --win-link: #0000ff;
-  --mirc-chat-text: #000000;
   --mirc-chat-bg: #ffffff;
-  --mirc-dimmed-text: #008000; /* Classic mIRC green system notices */
-  --mirc-chan-color: #008000;
-  --mirc-nick-color: #000080;
   --font-main: "MS Sans Serif", "Tahoma", "Arial", sans-serif;
-  --font-code: "Courier New", "Consolas", monospace;
+  --font-code: "Consolas", "Courier New", monospace;
 }
 
 * {
@@ -25,13 +21,17 @@
   padding: 0;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background-color: #008080; /* Classic Win95 Teal desktop */
   color: var(--win-text);
   font-family: var(--font-main);
   font-size: 11px;
-  min-height: 100vh;
-  padding: 6px;
+  padding: 4px;
 }
 
 .hidden {
@@ -50,14 +50,14 @@ body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  min-height: 96vh;
+  height: calc(100vh - 8px);
 }
 
 /* Title Bar */
 .win-titlebar {
   background: linear-gradient(90deg, var(--win-title-bg), #1084d0);
   color: var(--win-title-text);
-  padding: 3px 6px;
+  padding: 2px 6px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -118,7 +118,7 @@ body {
   display: flex;
   gap: 4px;
   background-color: var(--win-bg);
-  padding: 3px 8px;
+  padding: 2px 6px;
   border-bottom: 1px solid var(--win-border-dark);
   align-items: center;
 }
@@ -129,7 +129,7 @@ body {
   border-left: 1px solid var(--win-border-light);
   border-right: 1px solid var(--win-border-black);
   border-bottom: 1px solid var(--win-border-black);
-  padding: 2px 6px;
+  padding: 1px 6px;
   font-size: 11px;
   font-weight: bold;
   cursor: pointer;
@@ -148,21 +148,32 @@ body {
 
 /* Main Body Area */
 .win-body {
-  padding: 6px;
+  padding: 4px;
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0; /* Crucial for nested flex scroll containers */
+  overflow: hidden;
 }
 
-/* mIRC Dual-Pane Chat Layout */
+.view-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* mIRC Dual-Pane Layout */
 .mirc-main-layout {
   display: flex;
   gap: 4px;
   flex: 1;
-  min-height: 550px;
+  min-height: 0;
+  height: 100%;
 }
 
-/* mIRC Packet Log Container */
+/* mIRC Chat Area - Pure "Wall of Text" */
 .mirc-container {
   background-color: #ffffff;
   border-top: 2px solid var(--win-border-black);
@@ -170,22 +181,21 @@ body {
   border-right: 2px solid var(--win-border-light);
   border-bottom: 2px solid var(--win-border-light);
   box-shadow: inset 1px 1px var(--win-border-dark);
-  padding: 4px;
+  padding: 2px 4px;
   flex: 1;
   overflow-y: auto;
   font-family: var(--font-code);
   font-size: 12px;
-  line-height: 1.25;
+  line-height: 1.15; /* Dense line spacing like real mIRC */
 }
 
-/* mIRC Line Stacking */
+/* Continuous Text Lines - No Boxes, Minimal Padding */
 .mirc-line {
-  padding: 1px 2px;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
-  white-space: pre;
+  white-space: pre-wrap;
   word-break: break-all;
-  overflow-x: hidden;
-  text-overflow: ellipsis;
   display: block;
 }
 
@@ -198,33 +208,33 @@ body {
   color: #ffffff !important;
 }
 
-/* Active chat message lines */
-.mirc-chat {
+/* Line Colors */
+.mirc-line-chat {
   color: #000000;
 }
 
-/* System notices / non-chat packets */
-.mirc-sys {
-  color: #008000; /* Classic mIRC green notification */
-  font-weight: normal;
+.mirc-line-sys {
+  color: #008000; /* Vivid mIRC green system message */
 }
 
-.mirc-time { color: #808080; }
-.mirc-chan { color: #008000; font-weight: bold; }
-.mirc-nick { color: #000080; font-weight: bold; }
-.mirc-scope { color: #800080; font-weight: bold; }
-.mirc-path { color: #008080; }
+/* Distinct Component Colors */
+.mirc-ts { color: #707070; }
+.mirc-sys-star { color: #008000; font-weight: bold; }
+.mirc-nick { color: #000080; font-weight: bold; } /* Navy sender name */
+.mirc-chan { color: #800080; font-weight: bold; } /* Purple channel/scope */
+.mirc-text { color: #000000; } /* Crisp black message text */
+.mirc-meta { color: #505050; } /* Subtle gray hop path details */
 
-/* mIRC Right Side Nicklist / Channel List */
+/* mIRC Right Side Nicklist / Channel Sidebar */
 .mirc-nicklist {
-  width: 180px;
+  width: 170px;
   background-color: #ffffff;
   border-top: 2px solid var(--win-border-black);
   border-left: 2px solid var(--win-border-black);
   border-right: 2px solid var(--win-border-light);
   border-bottom: 2px solid var(--win-border-light);
   box-shadow: inset 1px 1px var(--win-border-dark);
-  padding: 2px;
+  padding: 0;
   overflow-y: auto;
   font-family: var(--font-main);
   font-size: 11px;
@@ -239,11 +249,13 @@ body {
 }
 
 .nicklist-item {
-  padding: 2px 4px;
+  padding: 1px 4px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-code);
+  font-size: 11px;
 }
 
 .nicklist-item:hover, .nicklist-item.selected {
@@ -268,7 +280,7 @@ body {
   border-right: 2px solid var(--win-border-black);
   border-bottom: 2px solid var(--win-border-black);
   box-shadow: inset -1px -1px var(--win-border-dark), inset 1px 1px var(--win-border-light);
-  padding: 3px 10px;
+  padding: 2px 8px;
   font-family: var(--font-main);
   font-size: 11px;
   cursor: pointer;
@@ -289,7 +301,7 @@ body {
   border-left: 2px solid var(--win-border-black);
   border-right: 2px solid var(--win-border-light);
   border-bottom: 2px solid var(--win-border-light);
-  padding: 3px 6px;
+  padding: 2px 4px;
   font-size: 11px;
   outline: none;
 }
@@ -297,8 +309,8 @@ body {
 /* Statusbar */
 .win-statusbar {
   display: flex;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: 6px;
+  padding: 3px 6px;
   background-color: var(--win-bg);
   border-top: 1px solid var(--win-border-dark);
 }
@@ -308,7 +320,7 @@ body {
   border-left: 1px solid var(--win-border-dark);
   border-right: 1px solid var(--win-border-light);
   border-bottom: 1px solid var(--win-border-light);
-  padding: 2px 6px;
+  padding: 1px 5px;
   font-size: 10px;
 }
 
@@ -334,7 +346,7 @@ body {
   border-bottom: 2px solid var(--win-border-black);
   box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.5);
   width: 90%;
-  max-width: 600px;
+  max-width: 620px;
   padding: 2px;
 }
 
@@ -358,7 +370,7 @@ body {
 .topology-container {
   display: flex;
   gap: 8px;
-  height: 600px;
+  height: 580px;
 }
 
 .topology-sidebar {

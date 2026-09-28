@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>mIRC v5.91 - [#meshcore: Live MeshCore Packet Feed]</title>
+  <title>MeshRC v5.91 - [#meshcore: Live MeshCore Stream]</title>
   <link rel="stylesheet" href="style.css">
   <!-- Vis-Network for Topology Graph -->
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -12,7 +12,7 @@
   <div class="win-window">
     <!-- Win95 Title Bar -->
     <div class="win-titlebar">
-      <span>📡 mIRC32 - [#meshcore (+nt): Live MeshCore Packet Stream]</span>
+      <span>📡 MeshRC32 - [#meshcore (+nt): Live MeshCore Packet Stream]</span>
       <div class="win-titlebar-controls">
         <button type="button" class="win-btn-box" id="openSettingsBtn" title="Ustawienia / Settings">⚙️</button>
         <button type="button" class="win-btn-box" id="langToggleBtn" title="Język / Language">PL</button>
@@ -33,7 +33,7 @@
       <button type="button" class="mirc-tool-btn" id="tbChannelsBtn" title="Channels List">📋 Channels</button>
       <button type="button" class="mirc-tool-btn" id="tbClearBtn" title="Clear Screen">🧹 Clear</button>
       <button type="button" class="mirc-tool-btn" id="tbSettingsBtn" title="Options">🛠️ Options</button>
-      <span style="margin-left: auto; font-family: var(--font-code); font-weight: bold; color: #000080;" id="mircServerStatus">Status: Connected to MeshCore Gateway</span>
+      <span style="margin-left: auto; font-family: var(--font-code); font-weight: bold; color: #000080;" id="mircServerStatus">Status: Connected to MeshRC Gateway</span>
     </div>
 
     <!-- Main Body -->
@@ -53,7 +53,7 @@
               <div class="nicklist-item channel-item" data-chan="#wro">#wro</div>
               <div class="nicklist-item channel-item" data-chan="#poz">#poz</div>
               <div class="nicklist-item channel-item" data-chan="#ieg">#ieg</div>
-              <div style="border-top: 1px solid var(--win-border-dark); margin: 4px 0;"></div>
+              <div style="border-top: 1px solid var(--win-border-dark); margin: 2px 0;"></div>
               <div id="dynamicNickList"></div>
             </div>
           </div>
@@ -80,7 +80,7 @@
     <div class="win-statusbar">
       <div class="win-status-pane" id="statusPane" data-i18n="statusConnecting">Łączenie z serwerem WS...</div>
       <div class="win-status-pane" id="countPane">Pakiety: 0</div>
-      <div class="win-status-pane">mIRC 32-bit v5.91 [MeshCore Gateway]</div>
+      <div class="win-status-pane">MeshRC 32-bit v5.91 [MeshCore Gateway]</div>
     </div>
   </div>
 
